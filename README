@@ -1,0 +1,29 @@
+TAINT ANALYSIS FOR CUDA KERNELS
+
+INSTALLATION:
+
+This document is created based on the link: http://llvm.org/docs/Projects.html, 
+if you have further questions, please refer to it for more information.
+
+1. Place the alias directory under 'llvm/projects' 
+
+2. Go into 'alias' directory, and run './configure --with-llvmsrc=<directory> --with-llvmobj=<directory> --prefix=<directory>'
+command to configure the alias project 
+
+3. Run 'make' to build a shared library, and the shared library resides in the same directory as the source code
+
+
+This project contains four llvm passes, which performs a combination of use-def chain analysis and alias analysis 
+to perform taint analysis on cuda kernel.
+
+1. TaintAnalysis pass
+
+This pass uses the alias analysis pass and does a use def chain traversal to identify tainted variables. The source of the tainted variables 
+are the inputs to the kernels and cuda thread configuration variables.
+
+To run this pass:
+
+opt -load /To/llvm/path/projects/alias/Debug+Asserts/lib/libashwin_taint.so -globalsmodref-aa -taint < inputfile.o >& /dev/null
+
+This pass outputs to the console all the program variables are tainted by input parameters and thread configuration 
+for each kernel as they appear in the code.
