@@ -54,7 +54,7 @@ struct RelFlowSet {
   RelFlowSet() {};
 
   bool empty() {
-    return sharedReadVec.empty() 
+    return sharedReadVec.empty()
              && sharedWriteVec.empty()
                && globalReadVec.empty()
                  && globalWriteVec.empty();
@@ -69,6 +69,9 @@ struct RelFlowSet {
 };
 
 struct CFGTaintSet {
+  // This branch must be explored if set true
+  // because this branch potentially will influence 
+  // the race checking 
   bool explore;
   std::set<Instruction*> instSet;
 
@@ -188,18 +191,18 @@ struct TaintArgInfo {
   }
 };
 
-struct SharedTaint {
+struct GlobalSharedTaint {
   Value *gv;
-  std::set<Instruction*> sharedInstSet;
-  std::set<Value*> sharedValueSet; 
+  std::set<Instruction*> instSet;
+  std::set<Value*> valueSet; 
 
-  SharedTaint(Value *_gv) : gv(_gv) {
-    sharedValueSet.insert(_gv);
+  GlobalSharedTaint(Value *_gv) : gv(_gv) {
+    valueSet.insert(_gv);
   }
 
-  ~SharedTaint() {
-    sharedInstSet.clear();
-    sharedValueSet.clear();
+  ~GlobalSharedTaint() {
+    instSet.clear();
+    valueSet.clear();
   }
 };
 
@@ -226,7 +229,8 @@ class CFGTree {
     void insertCurInst(llvm::Instruction *inst, 
                        std::vector<TaintArgInfo> &argSet, 
                        AliasAnalysis &AA, 
-                       std::vector<SharedTaint> &sharedSet);
+                       std::vector<GlobalSharedTaint> &glSet,
+                       std::vector<GlobalSharedTaint> &sharedSet);
     void setSyncthreadEncounter();
     bool exploreOneSideOfNode(CFGTaintSet &cfgTaintSet, 
                               RelFlowSet &relFlowSet, 
@@ -278,13 +282,14 @@ public:
   static char ID;
   std::map<std::string, bool> kernelSet;
   std::vector<VFunction*> functions;
-  std::vector<SharedTaint> sharedSet;
+  std::vector<GlobalSharedTaint> glSet;
+  std::vector<GlobalSharedTaint> sharedSet;
   VFunction* curVFunc;
   CFGTree *cfgTree;
   bool enterIteration;
 
   std::set<BasicBlock*> exploredBBSet;
-  std::map<CFGNode*, std::vector<CFGTaintSet> > exploredCFGInst;
+  std::set<CFGNode*> exploredCFGNodes;
 
   TaintAnalysisCUDA() : FunctionPass(ID) {}
   void dumpTaintArgInfo(TaintArgInfo &argInfo);
@@ -296,7 +301,6 @@ public:
                        std::vector<Value*> &sharedSet, 
                        unsigned &num); 
   void encounterSyncthreadsBarrier(Instruction *inst);
-  void constructExploredCFGInst(); 
   void insertCurInstToCFGTree(Instruction *inst, 
                               std::vector<TaintArgInfo> &taintArgSet, 
                               AliasAnalysis &AA);
@@ -311,7 +315,7 @@ public:
   void handleBrInst(llvm::Instruction *inst, 
                     std::vector<TaintArgInfo> &argSet);
   void transferToIterationPostDom(llvm::Instruction *inst); 
-  void transferToAnotherSideCurrentNode();
+  void transferToTheOtherSideCurrentNode();
   void handleSwitchInst(llvm::Instruction *inst,
                         std::vector<TaintArgInfo> &argSet);
   void handlePHINode(llvm::Instruction *inst, 
@@ -344,9 +348,9 @@ public:
   void handleStoreInst(llvm::Instruction *inst, 
                        std::vector<TaintArgInfo> &argSet, 
                        AliasAnalysis &AA);
-  bool checkCFGTaintSetAffected(Value* val, 
-                                Instruction *inst, 
-                                bool sSink);
+  void checkCFGTaintSetAffectRaceChecking(Value* val, 
+                                          Instruction *inst, 
+                                          bool sSink);
   void checkGEPIIndex(llvm::Instruction *inst, 
                       std::vector<TaintArgInfo> &argSet);
   void handleGetElementPtrInst(llvm::Instruction *inst, 
@@ -372,26 +376,30 @@ class ExecutorUtil {
                                                       bool isCondBr); 
     static bool checkVarAliasToShared(llvm::Value *pointer, 
                                       AliasAnalysis &AA, 
-                                      std::vector<SharedTaint> &sharedSet, 
+                                      std::vector<GlobalSharedTaint> &glSet, 
+                                      std::vector<GlobalSharedTaint> &sharedSet, 
                                       unsigned &num);
     static bool findValueFromTaintSet(llvm::Value *val, 
                                       std::set<Instruction*> &taintInstList, 
                                       std::set<Value*> &taintValueSet);
+    static void insertGlobalSharedSet(Instruction *inst, 
+                                      Value *pointer, 
+                                      std::vector<GlobalSharedTaint> &set);
     static void dumpTaintInstList(std::set<Instruction*> &taintInstList);
     static void dumpTaintValueSet(std::set<Value*> &taintValueSet);
     static void checkLoadInst(Instruction *inst, 
-                              std::vector<TaintArgInfo> &taintArgSet, 
-                              std::vector<SharedTaint> &sharedSet, 
+                              std::vector<GlobalSharedTaint> &glSet, 
+                              std::vector<GlobalSharedTaint> &sharedSet, 
                               AliasAnalysis &AA, 
                               RelFlowSet &flowSet); 
     static void checkStoreInst(Instruction *inst, 
-                               std::vector<TaintArgInfo> &taintArgSet, 
-                               std::vector<SharedTaint> &sharedSet, 
+                               std::vector<GlobalSharedTaint> &glSet, 
+                               std::vector<GlobalSharedTaint> &sharedSet, 
                                AliasAnalysis &AA, 
                                RelFlowSet &flowSet); 
     static void checkAtomicInst(Instruction *inst, 
-                                std::vector<TaintArgInfo> &taintArgSet, 
-                                std::vector<SharedTaint> &sharedSet, 
+                                std::vector<GlobalSharedTaint> &glSet, 
+                                std::vector<GlobalSharedTaint> &sharedSet, 
                                 AliasAnalysis &AA, 
                                 RelFlowSet &flowSet); 
 };

@@ -111,7 +111,6 @@ bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
       kernelSet.insert(std::make_pair(line, false));
   }
   f.close();
-
   curVFunc = NULL;
 
   // Identify the __shared__ global variables 
@@ -122,12 +121,12 @@ bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
     if (gv && gv->hasSection()) {
       std::string sec = gv->getSection();
       if (sec == "__shared__") {
-        sharedSet.push_back(SharedTaint(gv)); 
+        sharedSet.push_back(GlobalSharedTaint(gv)); 
         unsigned size = sharedSet.size();
         for (Value::use_iterator ui = gv->use_begin(); 
              ui != gv->use_end(); ++ui) {
           Instruction *inst = dyn_cast<Instruction>(*ui);
-          sharedSet[size-1].sharedInstSet.insert(inst);
+          sharedSet[size-1].instSet.insert(inst);
         }
       }
     }
@@ -210,6 +209,8 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
       BasicBlock *postDom = ExecutorUtil::findNearestCommonPostDominator(inst, true); 
       CFGNode *node = new CFGNode(inst, postDom, 
                                   bi->getNumSuccessors(), true);
+      exploredCFGNodes.insert(node);
+
       if (brTainted)
         node->tainted = true;
 
@@ -222,9 +223,9 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
         if (current->outOfIteration == 0) {
           // drop out of the iteration
           current->which++;
-          transferToAnotherSideCurrentNode();
-        } 
-      } else 
+          transferToTheOtherSideCurrentNode();
+        }
+      } else
         transferToBasicBlock(bi->getSuccessor(0));
     }
   }
@@ -239,7 +240,7 @@ void TaintAnalysisCUDA::transferToIterationPostDom(llvm::Instruction *inst) {
   transferToBasicBlock(postDom);  
 }
 
-void TaintAnalysisCUDA::transferToAnotherSideCurrentNode() {
+void TaintAnalysisCUDA::transferToTheOtherSideCurrentNode() {
   CFGNode *curNode = cfgTree->getCurrentNode();
   if (curNode->isBrCond) {
     BranchInst *bi = dyn_cast<BranchInst>(curNode->inst);
@@ -281,6 +282,7 @@ void TaintAnalysisCUDA::handleSwitchInst(Instruction *inst,
     // two branches are both possible 
     BasicBlock *postDom = ExecutorUtil::findNearestCommonPostDominator(inst, false); 
     CFGNode *node = new CFGNode(inst, postDom, si->getNumSuccessors(), false); 
+    exploredCFGNodes.insert(node);
     cfgTree->insertNodeIntoCFGTree(node);
     transferToBasicBlock(si->getSuccessor(0));
   } else {
@@ -295,7 +297,7 @@ void TaintAnalysisCUDA::handlePHINode(Instruction *inst,
 
   for (unsigned i = 0; i < pi->getNumIncomingValues(); i++) {
     Value *val = pi->getIncomingValue(i);
-    checkCFGTaintSetAffected(val, inst, false);  
+    checkCFGTaintSetAffectRaceChecking(val, inst, false);  
   }
 
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
@@ -317,7 +319,7 @@ void TaintAnalysisCUDA::handleSelectInst(Instruction *inst,
   SelectInst *si = dyn_cast<SelectInst>(inst);
   Value *cond = si->getCondition(); 
 
-  checkCFGTaintSetAffected(cond, inst, false);
+  checkCFGTaintSetAffectRaceChecking(cond, inst, false);
 
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(cond, 
@@ -447,12 +449,13 @@ void TaintAnalysisCUDA::executeCall(Instruction *inst,
 void TaintAnalysisCUDA::executeCUDAArithOrConvIntrinsic(Instruction *inst, 
                                                         std::string fName,
                                                         std::vector<TaintArgInfo> &taintArgSet) {
-  bool explore = false;
+  // check if the code in a branch 
+  // relates to the race checking
   for (unsigned i = 0; i < inst->getNumOperands(); i++) {
     Value *arg = inst->getOperand(i);
-    explore = checkCFGTaintSetAffected(arg, inst, false); 
-    if (explore) break;
+    checkCFGTaintSetAffectRaceChecking(arg, inst, false); 
   }
+
   // check taint set 
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     for (unsigned j = 0; j < inst->getNumOperands(); j++) {
@@ -470,14 +473,13 @@ void TaintAnalysisCUDA::executeCUDAArithOrConvIntrinsic(Instruction *inst,
 void TaintAnalysisCUDA::executeCUDAAtomicIntrinsic(Instruction *inst, 
                                                    std::string fName,
                                                    std::vector<TaintArgInfo> &taintArgSet) {
-  // check cfgTree ... 
-  bool explore = false;
-
+  // check if the code in a branch 
+  // relates to the race checking
   for (unsigned i = 0; i < inst->getNumOperands(); i++) {
     Value *arg = inst->getOperand(i);
-    explore = checkCFGTaintSetAffected(arg, inst, true); 
-    if (explore) break;
+    checkCFGTaintSetAffectRaceChecking(arg, inst, true); 
   }
+
   // check taint set ... 
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     for (unsigned j = 0; j < inst->getNumOperands(); j++) {
@@ -531,8 +533,8 @@ void TaintAnalysisCUDA::handleArithmeticInst(Instruction *inst,
   Value *right = inst->getOperand(1);    
 
   // check CFG tree
-  checkCFGTaintSetAffected(left, inst, false);
-  checkCFGTaintSetAffected(right, inst, false);
+  checkCFGTaintSetAffectRaceChecking(left, inst, false);
+  checkCFGTaintSetAffectRaceChecking(right, inst, false);
 
   // check taint set 
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
@@ -545,15 +547,27 @@ void TaintAnalysisCUDA::handleArithmeticInst(Instruction *inst,
       taintArgSet[i].taintInstList.insert(inst);
   }
 
+  // check global set
+  for (unsigned i = 0; i < glSet.size(); i++) {
+    if (ExecutorUtil::findValueFromTaintSet(left, 
+                                            glSet[i].instSet, 
+                                            glSet[i].valueSet)
+         || ExecutorUtil::findValueFromTaintSet(right,   
+                                                glSet[i].instSet,    
+                                                glSet[i].valueSet)) {
+      glSet[i].instSet.insert(inst);
+    }
+  }
+
   // check shared set
   for (unsigned i = 0; i < sharedSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(left, 
-                                            sharedSet[i].sharedInstSet, 
-                                            sharedSet[i].sharedValueSet)
+                                            sharedSet[i].instSet, 
+                                            sharedSet[i].valueSet)
          || ExecutorUtil::findValueFromTaintSet(right,   
-                                                sharedSet[i].sharedInstSet,    
-                                                sharedSet[i].sharedValueSet)) {
-      sharedSet[i].sharedInstSet.insert(inst);
+                                                sharedSet[i].instSet,    
+                                                sharedSet[i].valueSet)) {
+      sharedSet[i].instSet.insert(inst);
     }
   }
 }
@@ -564,8 +578,8 @@ void TaintAnalysisCUDA::handleCmpInst(Instruction *inst,
   Value *right = inst->getOperand(1); 
 
   // check CFG tree
-  checkCFGTaintSetAffected(left, inst, false);
-  checkCFGTaintSetAffected(right, inst, false);
+  checkCFGTaintSetAffectRaceChecking(left, inst, false);
+  checkCFGTaintSetAffectRaceChecking(right, inst, false);
 
   // check taint set
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
@@ -585,16 +599,16 @@ bool ExecutorUtil::findValueFromTaintSet(Value *val,
   if (Instruction *si = dyn_cast<Instruction>(val)) {
     if (taintInstList.find(si) != taintInstList.end()) {
       if (Verbose > 0) {
-        dumpTaintInstList(taintInstList);
-        dumpTaintValueSet(taintValueSet);
+        //dumpTaintInstList(taintInstList);
+        //dumpTaintValueSet(taintValueSet);
       }
       return true;
     }
   } else {
     if (taintValueSet.find(val) != taintValueSet.end()) {
       if (Verbose > 0) {
-        dumpTaintInstList(taintInstList);
-        dumpTaintValueSet(taintValueSet);
+        //dumpTaintInstList(taintInstList);
+        //dumpTaintValueSet(taintValueSet);
       }
       return true;
     } else {
@@ -633,6 +647,19 @@ BasicBlock* ExecutorUtil::findNearestCommonPostDominator(llvm::Instruction *inst
   return postDomBB;
 }
 
+void ExecutorUtil::insertGlobalSharedSet(Instruction *inst, 
+                                         Value *pointer, 
+                                         std::vector<GlobalSharedTaint> &set) {
+  for (unsigned i = 0; i < set.size(); i++) {
+    if (inst->getType()->isPointerTy()
+         && ExecutorUtil::findValueFromTaintSet(pointer, 
+                                                set[i].instSet, 
+                                                set[i].valueSet)) {
+      set[i].instSet.insert(inst);
+    }
+  }
+}
+
 void ExecutorUtil::dumpTaintInstList(std::set<Instruction*> &taintInstList) {
   if (taintInstList.size())
     TAINT_INFO2 << "Dump TaintInstList: " << std::endl;
@@ -669,15 +696,10 @@ void TaintAnalysisCUDA::handleLoadInst(Instruction *inst,
       taintArgSet[i].taintInstList.insert(inst);
     }
   }
+  // check global set
+  ExecutorUtil::insertGlobalSharedSet(inst, pointer, glSet);
   // check shared set
-  for (unsigned i = 0; i < sharedSet.size(); i++) {
-    if (inst->getType()->isPointerTy()
-         && ExecutorUtil::findValueFromTaintSet(pointer, 
-                                                sharedSet[i].sharedInstSet, 
-                                                sharedSet[i].sharedValueSet)) {
-      sharedSet[i].sharedInstSet.insert(inst);
-    }
-  }
+  ExecutorUtil::insertGlobalSharedSet(inst, pointer, sharedSet);
 }
 
 void TaintAnalysisCUDA::handlePointerOperand(Instruction *inst,
@@ -724,38 +746,61 @@ void TaintAnalysisCUDA::handleStoreInst(Instruction *inst,
     }
   }
 
+  // check global set
+  for (std::vector<GlobalSharedTaint>::iterator vi = glSet.begin(); 
+       vi != glSet.end(); vi++) {
+    if (valueOp->getType()->isPointerTy()
+         && ExecutorUtil::findValueFromTaintSet(valueOp, 
+                                                vi->instSet, 
+                                                vi->valueSet)) {
+      if (Instruction *i = dyn_cast<Instruction>(pointerOp))
+        handlePointerOperand(i, vi->instSet, vi->valueSet);
+      else
+        vi->valueSet.insert(pointerOp);
+
+      vi->instSet.insert(inst);
+    }
+  }
+
   // check shared set
-  for (std::vector<SharedTaint>::iterator vi = sharedSet.begin(); 
+  for (std::vector<GlobalSharedTaint>::iterator vi = sharedSet.begin(); 
        vi != sharedSet.end(); vi++) {
     if (valueOp->getType()->isPointerTy()
          && ExecutorUtil::findValueFromTaintSet(valueOp, 
-                                                vi->sharedInstSet, 
-                                                vi->sharedValueSet)) {
+                                                vi->instSet, 
+                                                vi->valueSet)) {
       if (Instruction *i = dyn_cast<Instruction>(pointerOp))
-        handlePointerOperand(i, vi->sharedInstSet, vi->sharedValueSet);
+        handlePointerOperand(i, vi->instSet, vi->valueSet);
       else
-        vi->sharedValueSet.insert(pointerOp);
+        vi->valueSet.insert(pointerOp);
 
-      vi->sharedInstSet.insert(inst);
+      vi->instSet.insert(inst);
     }
   }
 }
 
-bool TaintAnalysisCUDA::checkCFGTaintSetAffected(Value *val, 
-                                                 Instruction *inst,
-                                                 bool sSink) {
-  bool explore = false;
-
-  if (Instruction *si = dyn_cast<Instruction>(val)) {
+void TaintAnalysisCUDA::checkCFGTaintSetAffectRaceChecking(Value *val, 
+                                                           Instruction *inst,
+                                                           bool sSink) {
+  if (Instruction *in = dyn_cast<Instruction>(val)) {
     // check if inst will be affected by instruction in the exploredCFGInst
-    for (std::map<CFGNode*, std::vector<CFGTaintSet> >::iterator mi = exploredCFGInst.begin(); 
-         mi != exploredCFGInst.end(); mi++) {
-      std::vector<CFGTaintSet> &cfgTaintVec = mi->second;
-      for (unsigned i = 0; i < cfgTaintVec.size(); i++) {
-        if (!cfgTaintVec[i].explore
-             && cfgTaintVec[i].instSet.find(si) != cfgTaintVec[i].instSet.end()) {
-          cfgTaintVec[i].instSet.insert(inst);
-          explore = true;
+    for (std::set<CFGNode*>::iterator si = exploredCFGNodes.begin(); 
+         si != exploredCFGNodes.end(); si++) {
+      std::vector<CFGTaintSet> &cfgTaintSet = (*si)->cfgInstSet;
+      for (unsigned i = 0; i < cfgTaintSet.size(); i++) {
+        // std::cout << "cfgTaintSet " << i << " explore : " 
+        // << cfgTaintSet[i].explore << ", the inst Set: " 
+        // << std::endl;
+        // for (std::set<Instruction*>::iterator si = cfgTaintSet[i].instSet.begin();
+        //     si != cfgTaintSet[i].instSet.end(); si++) {
+        //  (*si)->dump();
+        // }         
+ 
+        if (!cfgTaintSet[i].explore
+             && cfgTaintSet[i].instSet.find(in) != cfgTaintSet[i].instSet.end()) {
+          // If this branch is not set "explore" 
+          // Try to update the instSet associated with this branch
+          cfgTaintSet[i].instSet.insert(inst);
           if (sSink) {
             if (Verbose > 0) {
               // explore is set true, and update the CFGTree 
@@ -763,22 +808,17 @@ bool TaintAnalysisCUDA::checkCFGTaintSetAffected(Value *val,
                         << std::endl;
               inst->dump();
             }
-            cfgTaintVec[i].explore = true;
-            CFGNode *node = mi->first;
-            node->cfgInstSet[i].explore = true; 
+            cfgTaintSet[i].explore = true;
           }
         }
       }
     }
   }
-
-  return explore;
-} 
+}
 
 void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst, 
                                        std::vector<TaintArgInfo> &taintArgSet) {
   GetElementPtrInst *gepi = dyn_cast<GetElementPtrInst>(inst);
-  bool explore = false;
 
   // To test other arguments are tainted or not  
   for (llvm::User::op_iterator oi = gepi->idx_begin(); 
@@ -803,8 +843,7 @@ void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst,
       }
     }
 
-    if (!explore)
-      explore = checkCFGTaintSetAffected(element, inst, true);
+    checkCFGTaintSetAffectRaceChecking(element, inst, true);
   }
 }
 
@@ -817,7 +856,7 @@ void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst,
   bool shared_alias = false;
 
   // check cfgTree ... 
-  checkCFGTaintSetAffected(pointer, inst, false);
+  checkCFGTaintSetAffectRaceChecking(pointer, inst, false);
  
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     device_alias = ExecutorUtil::findValueFromTaintSet(pointer, 
@@ -844,11 +883,11 @@ void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst,
 
   for (unsigned i = 0; i < sharedSet.size(); i++) {
     shared_alias = ExecutorUtil::findValueFromTaintSet(pointer, 
-                                                       sharedSet[i].sharedInstSet, 
-                                                       sharedSet[i].sharedValueSet);
+                                                       sharedSet[i].instSet, 
+                                                       sharedSet[i].valueSet);
     // the pointer value is the alias of "shared" value
     if (shared_alias) {
-      sharedSet[i].sharedInstSet.insert(inst);
+      sharedSet[i].instSet.insert(inst);
       break;
     }
   }
@@ -861,7 +900,7 @@ void TaintAnalysisCUDA::handleConversionInst(Instruction *inst,
                                              std::vector<TaintArgInfo> &taintArgSet) {
   Value *val = inst->getOperand(0); 
 
-  checkCFGTaintSetAffected(val, inst, false);
+  checkCFGTaintSetAffectRaceChecking(val, inst, false);
 
   // check taint set
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
@@ -872,17 +911,26 @@ void TaintAnalysisCUDA::handleConversionInst(Instruction *inst,
     }
   }
 
+  // check global set
+  for (unsigned i = 0; i < glSet.size(); i++) {
+    if (ExecutorUtil::findValueFromTaintSet(val, 
+                                            glSet[i].instSet, 
+                                            glSet[i].valueSet)) { 
+      glSet[i].instSet.insert(inst);
+    }
+  } 
+
   // check shared set
   for (unsigned i = 0; i < sharedSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(val, 
-                                            sharedSet[i].sharedInstSet, 
-                                            sharedSet[i].sharedValueSet)) { 
-      sharedSet[i].sharedInstSet.insert(inst);
+                                            sharedSet[i].instSet, 
+                                            sharedSet[i].valueSet)) { 
+      sharedSet[i].instSet.insert(inst);
     }
   } 
 }
 
-// Return block is changed or not 
+// Return value : block is changed or not 
 bool TaintAnalysisCUDA::executeInstruction(llvm::Instruction *inst,
                                            std::vector<TaintArgInfo> &taintArgSet,
                                            AliasAnalysis &AA) {
@@ -1129,37 +1177,22 @@ void TaintAnalysisCUDA::encounterSyncthreadsBarrier(Instruction *inst) {
   }
 }
 
-void TaintAnalysisCUDA::constructExploredCFGInst() {
-  if (!cfgTree->inIteration()) {
-    CFGNode *node = cfgTree->getCurrentNode();
-    unsigned which = node->which;
-    if (exploredCFGInst.find(node) == exploredCFGInst.end()) {
-      std::vector<CFGTaintSet> cfgTaintSet;
-      cfgTaintSet.push_back(CFGTaintSet(node->cfgInstSet[which-1]));
-      exploredCFGInst.insert(std::make_pair(node, cfgTaintSet));  
-    } else {
-      std::vector<CFGTaintSet> &cfgTaintSet = 
-                                     exploredCFGInst.find(node)->second;
-      cfgTaintSet.push_back(CFGTaintSet(node->cfgInstSet[which-1]));
-    }
-  }
-}
-
 void TaintAnalysisCUDA::insertCurInstToCFGTree(Instruction *inst,
                                                std::vector<TaintArgInfo> &taintArgSet, 
                                                AliasAnalysis &AA) {
   if (!cfgTree->inIteration()) {
     if (cfgTree->getCurrentNode()) {
-      cfgTree->insertCurInst(inst, taintArgSet, AA, sharedSet);
+      cfgTree->insertCurInst(inst, taintArgSet, 
+                             AA, glSet, sharedSet);
     } else {
       cfgTree->preInstSet.insert(inst);
 
       if (inst->getOpcode() == Instruction::Load) 
-        ExecutorUtil::checkLoadInst(inst, taintArgSet, sharedSet, 
+        ExecutorUtil::checkLoadInst(inst, glSet, sharedSet, 
                                     AA, cfgTree->preFlowSet);
 
       if (inst->getOpcode() == Instruction::Store)
-        ExecutorUtil::checkStoreInst(inst, taintArgSet, sharedSet, 
+        ExecutorUtil::checkStoreInst(inst, glSet, sharedSet, 
                                      AA, cfgTree->preFlowSet);
     }
   }
@@ -1209,9 +1242,8 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
 
       TaintArgInfo argInfo(f->getName().str(), arg, false, totalArgNum);
       taintArgSet.push_back(argInfo);
-
-      unsigned size = taintArgSet.size();
-      taintArgSet[size-1].taintValueSet.insert(arg);
+      glSet.push_back(GlobalSharedTaint(arg));
+      taintArgSet.back().taintValueSet.insert(arg);
     }
   }
 
@@ -1255,15 +1287,17 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
         continue;
       } else {
         if (blockChange) {
-          transferToAnotherSideCurrentNode();
-          constructExploredCFGInst();
+          transferToTheOtherSideCurrentNode();
           continue;
         }
       }
     } 
 
     blockChange = executeInstruction(inst, taintArgSet, AA);
+    // Insert the instruction into the CFG Node
     insertCurInstToCFGTree(inst, taintArgSet, AA);
+    // When __syncthreads is encountered, update the 
+    // CFG Tree to update the braches' exploration property 
     encounterSyncthreadsBarrier(inst);
 
     BasicBlock *bb = inst->getParent();

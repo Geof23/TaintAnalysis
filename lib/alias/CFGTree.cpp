@@ -161,18 +161,18 @@ static bool checkTwoTaintArgSetSame(std::vector<TaintArgInfo> &set1,
 } 
 
 void ExecutorUtil::checkLoadInst(Instruction *inst, 
-                                 std::vector<TaintArgInfo> &taintArgSet, 
-                                 std::vector<SharedTaint> &sharedSet, 
+                                 std::vector<GlobalSharedTaint> &glSet, 
+                                 std::vector<GlobalSharedTaint> &sharedSet, 
                                  AliasAnalysis &AA, 
                                  RelFlowSet &flowSet) {
   bool relToShared = false;
   LoadInst *load = dyn_cast<LoadInst>(inst); 
-  Value *pointer = load->getPointerOperand(); 
+  Value *pointer = load->getPointerOperand();
  
   for (unsigned i = 0; i < sharedSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(pointer, 
-                                            sharedSet[i].sharedInstSet, 
-                                            sharedSet[i].sharedValueSet)) {
+                                            sharedSet[i].instSet, 
+                                            sharedSet[i].valueSet)) {
       // Related to shared
       if (Verbose > 0) {
         std::cout << "shared load inst: " << std::endl;
@@ -185,12 +185,12 @@ void ExecutorUtil::checkLoadInst(Instruction *inst,
   }
 
   if (!relToShared) {
-    for (unsigned i = 0; i < taintArgSet.size(); i++) {
+    for (unsigned i = 0; i < glSet.size(); i++) {
       if (ExecutorUtil::findValueFromTaintSet(pointer,
-                                              taintArgSet[i].taintInstList, 
-                                              taintArgSet[i].taintValueSet)) {
+                                              glSet[i].instSet, 
+                                              glSet[i].valueSet)) {
         // Related to global 
-        flowSet.globalReadVec.push_back(RelValue(inst, taintArgSet[i].arg));
+        flowSet.globalReadVec.push_back(RelValue(inst, glSet[i].gv));
         if (Verbose > 0) {
           std::cout << "global load inst: " << std::endl;
           inst->dump();
@@ -202,8 +202,8 @@ void ExecutorUtil::checkLoadInst(Instruction *inst,
 } 
 
 void ExecutorUtil::checkStoreInst(Instruction *inst, 
-                                  std::vector<TaintArgInfo> &taintArgSet, 
-                                  std::vector<SharedTaint> &sharedSet, 
+                                  std::vector<GlobalSharedTaint> &glSet, 
+                                  std::vector<GlobalSharedTaint> &sharedSet, 
                                   AliasAnalysis &AA, 
                                   RelFlowSet &flowSet) {
   bool relToShared = false;
@@ -212,8 +212,8 @@ void ExecutorUtil::checkStoreInst(Instruction *inst,
  
   for (unsigned i = 0; i < sharedSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(pointer, 
-                                            sharedSet[i].sharedInstSet, 
-                                            sharedSet[i].sharedValueSet)) {
+                                            sharedSet[i].instSet, 
+                                            sharedSet[i].valueSet)) {
       // Related to shared
       if (Verbose > 0) {
         std::cout << "shared store inst: " << std::endl;
@@ -226,16 +226,16 @@ void ExecutorUtil::checkStoreInst(Instruction *inst,
   }
 
   if (!relToShared) {
-    for (unsigned i = 0; i < taintArgSet.size(); i++) {
+    for (unsigned i = 0; i < glSet.size(); i++) {
       if (ExecutorUtil::findValueFromTaintSet(pointer,
-                                              taintArgSet[i].taintInstList, 
-                                              taintArgSet[i].taintValueSet)) {
+                                              glSet[i].instSet, 
+                                              glSet[i].valueSet)) {
         // Related to global 
         if (Verbose > 0) {
           std::cout << "global store inst: " << std::endl;
           inst->dump();
         }
-        flowSet.globalWriteVec.push_back(RelValue(inst, taintArgSet[i].arg));
+        flowSet.globalWriteVec.push_back(RelValue(inst, glSet[i].gv));
         break; 
       }
     }
@@ -243,8 +243,8 @@ void ExecutorUtil::checkStoreInst(Instruction *inst,
 }
 
 void ExecutorUtil::checkAtomicInst(Instruction *inst, 
-                                   std::vector<TaintArgInfo> &taintArgSet, 
-                                   std::vector<SharedTaint> &sharedSet, 
+                                   std::vector<GlobalSharedTaint> &glSet, 
+                                   std::vector<GlobalSharedTaint> &sharedSet, 
                                    AliasAnalysis &AA, 
                                    RelFlowSet &flowSet) {
   bool relToShared = false;
@@ -252,8 +252,8 @@ void ExecutorUtil::checkAtomicInst(Instruction *inst,
   
   for (unsigned i = 0; i < sharedSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(pointer, 
-                                            sharedSet[i].sharedInstSet, 
-                                            sharedSet[i].sharedValueSet)) {
+                                            sharedSet[i].instSet, 
+                                            sharedSet[i].valueSet)) {
       // Related to shared
       if (Verbose > 0) {
         std::cout << "shared store inst: " << std::endl;
@@ -267,17 +267,17 @@ void ExecutorUtil::checkAtomicInst(Instruction *inst,
   }
 
   if (!relToShared) {
-    for (unsigned i = 0; i < taintArgSet.size(); i++) {
+    for (unsigned i = 0; i < glSet.size(); i++) {
       if (ExecutorUtil::findValueFromTaintSet(pointer,
-                                              taintArgSet[i].taintInstList, 
-                                              taintArgSet[i].taintValueSet)) {
+                                              glSet[i].instSet, 
+                                              glSet[i].valueSet)) {
         // Related to global 
         if (Verbose > 0) {
           std::cout << "global store inst: " << std::endl;
           inst->dump();
         }
-        flowSet.globalReadVec.push_back(RelValue(inst, taintArgSet[i].arg));
-        flowSet.globalWriteVec.push_back(RelValue(inst, taintArgSet[i].arg));
+        flowSet.globalReadVec.push_back(RelValue(inst, glSet[i].gv));
+        flowSet.globalWriteVec.push_back(RelValue(inst, glSet[i].gv));
         break; 
       }
     }
@@ -287,7 +287,8 @@ void ExecutorUtil::checkAtomicInst(Instruction *inst,
 void CFGTree::insertCurInst(Instruction *inst, 
                             std::vector<TaintArgInfo> &taintArgSet,
                             AliasAnalysis &AA,
-                            std::vector<SharedTaint> &sharedSet) {
+                            std::vector<GlobalSharedTaint> &glSet,
+                            std::vector<GlobalSharedTaint> &sharedSet) {
   if (!current->allFinish) {
     unsigned which = current->which;
     CFGTaintSet &cfgTaintSet = current->cfgInstSet[which];    
@@ -295,29 +296,28 @@ void CFGTree::insertCurInst(Instruction *inst,
 
     // To determine if those instructions will affect the following code
     if (inst->getOpcode() == Instruction::Load)
-      ExecutorUtil::checkLoadInst(inst, taintArgSet, sharedSet, 
+      ExecutorUtil::checkLoadInst(inst, glSet, sharedSet, 
                                   AA, current->cfgFlowSet[which]);
 
     if (inst->getOpcode() == Instruction::Store)
-      ExecutorUtil::checkStoreInst(inst, taintArgSet, sharedSet, 
+      ExecutorUtil::checkStoreInst(inst, glSet, sharedSet, 
                                    AA, current->cfgFlowSet[which]);
 
     std::string instName = inst->getName().str();
     if (instName.find("Atomic") != std::string::npos) {
-      ExecutorUtil::checkAtomicInst(inst, taintArgSet, sharedSet, 
+      ExecutorUtil::checkAtomicInst(inst, glSet, sharedSet, 
                                     AA, current->cfgFlowSet[which]);
     }
-
   } else {
     std::set<Instruction*> &instSet = current->succInstSet;
     instSet.insert(inst);
 
     if (inst->getOpcode() == Instruction::Load)
-      ExecutorUtil::checkLoadInst(inst, taintArgSet, sharedSet, 
+      ExecutorUtil::checkLoadInst(inst, glSet, sharedSet, 
                                   AA, current->succFlowSet);
 
     if (inst->getOpcode() == Instruction::Store)
-      ExecutorUtil::checkStoreInst(inst, taintArgSet, sharedSet, 
+      ExecutorUtil::checkStoreInst(inst, glSet, sharedSet, 
                                    AA, current->succFlowSet);
   }
 }
@@ -539,10 +539,13 @@ static void annotateFunctionIR(llvm::LLVMContext &glContext,
 
         std::string str = "br-";
         for (unsigned i = 0; i < node->cfgInstSet.size(); i++) {
-          if (node->cfgInstSet[i].explore)
+          if (node->cfgInstSet[i].explore) {
+            //std::cout << "branch " << i << ", explore! " << std::endl;
             str += "true";
-          else 
+          } else {
+            //std::cout << "branch " << i << ", not explore! " << std::endl;
             str += "false";
+          }
 
           if (i != node->cfgInstSet.size()-1)
             str += "-";
