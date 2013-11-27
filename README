@@ -23,7 +23,7 @@ are the inputs to the kernels and cuda thread configuration variables.
 
 To run this pass:
 
-opt -load /To/llvm/path/projects/alias/Debug+Asserts/lib/libashwin_taint.so -globalsmodref-aa -taint < inputfile.o >& /dev/null
+opt -load /To/llvm/path/projects/alias/Debug+Asserts/lib/libashwin_taint.so -scev-aa -taint < inputfile.o >& /dev/null
 
 This pass outputs to the console all the program variables are tainted by input parameters and thread configuration 
 for each kernel as they appear in the code.
