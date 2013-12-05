@@ -53,7 +53,7 @@ public:
   std::vector<RelValue> globalReadVec;
   std::vector<RelValue> globalWriteVec;
 
-  RelFlowSet() {}
+  RelFlowSet(); 
 
   ~RelFlowSet() {
     sharedReadVec.clear();
@@ -178,10 +178,10 @@ public:
  
   explicit TaintArgInfo(std::string _fName, Value *_arg, 
                         bool _taint, unsigned _argNum) : 
-                                   fName(_fName), 
-                                   arg(_arg), 
-                                   taint(_taint),
-                                   argNum(_argNum) {}
+                                       fName(_fName), 
+                                       arg(_arg), 
+                                       taint(_taint),
+                                       argNum(_argNum) {}
 
   TaintArgInfo(const TaintArgInfo &info) : 
                                    fName(info.fName), 

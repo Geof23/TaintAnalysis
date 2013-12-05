@@ -1,6 +1,7 @@
-#include "TaintAnalysis.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+
+#include "TaintAnalysis.h"
 
 namespace runtime {
   extern cl::opt<bool> Verbose;
@@ -88,13 +89,13 @@ void CFGTree::insertNodeIntoCFGTree(CFGNode *node) {
   nodeNum++;   
 }
 
-static bool isTwoInstIdentical(llvm::Instruction *inst1, 
-                               llvm::Instruction *inst2) {
+static bool isTwoInstIdentical(Instruction *inst1, 
+                               Instruction *inst2) {
   std::string func1Name = inst1->getParent()->getParent()->getName().str();
   std::string func2Name = inst2->getParent()->getParent()->getName().str();
 
-  llvm::BasicBlock *bb1 = inst1->getParent();
-  llvm::BasicBlock *bb2 = inst2->getParent();
+  BasicBlock *bb1 = inst1->getParent();
+  BasicBlock *bb2 = inst2->getParent();
 
   return func1Name.compare(func2Name) == 0
            && bb1 == bb2
@@ -102,7 +103,7 @@ static bool isTwoInstIdentical(llvm::Instruction *inst1,
 }
 
 bool CFGTree::resetCurrentNodeInCFGTree(CFGNode *node, 
-                                        llvm::Instruction *inst) {
+                                        Instruction *inst) {
   bool currentSet = false;
 
   if (node) {
@@ -128,7 +129,7 @@ bool CFGTree::resetCurrentNodeInCFGTree(CFGNode *node,
   return currentSet;
 } 
 
-void CFGTree::exploreCFGUnderIteration(llvm::Instruction *inst) {
+void CFGTree::exploreCFGUnderIteration(Instruction *inst) {
   bool reset = resetCurrentNodeInCFGTree(root, inst);
   assert(reset && "current is not set correctly!"); 
 }
@@ -525,8 +526,8 @@ static void updateTaintNodeStr(CFGNode *node, std::string &str) {
   }
 }
 
-static void annotateFunctionIR(llvm::LLVMContext &glContext, 
-                               llvm::Function *f, 
+static void annotateFunctionIR(LLVMContext &glContext, 
+                               Function *f, 
                                CFGNode *node) {
   bool instFound = false;
 
@@ -573,8 +574,8 @@ static void annotateFunctionIR(llvm::LLVMContext &glContext,
   }
 }
 
-void CFGTree::exploreCFGTreeToAnnotate(llvm::LLVMContext &glContext, 
-                                       llvm::Function *f, 
+void CFGTree::exploreCFGTreeToAnnotate(LLVMContext &glContext, 
+                                       Function *f, 
                                        CFGNode *node) {
   if (node) {
     //std::cout << "node inst: " << node->causeIteration << std::endl;
@@ -737,7 +738,7 @@ void CFGTree::exploreNodeAcrossBI(CFGNode *node,
   return res;
 }*/ 
 
-bool CFGTree::foundSameBrInstFromCFGTree(llvm::Instruction *inst, 
+bool CFGTree::foundSameBrInstFromCFGTree(Instruction *inst, 
                                          CFGNode *node) {
   bool found = false;
 
@@ -760,15 +761,15 @@ bool CFGTree::foundSameBrInstFromCFGTree(llvm::Instruction *inst,
   return found;
 }
 
-bool CFGTree::identifySuccessorRelation(llvm::BasicBlock *predBB, 
-                                        llvm::BasicBlock *succBB) {
+bool CFGTree::identifySuccessorRelation(BasicBlock *predBB, 
+                                        BasicBlock *succBB) {
   bool identify = false;
-  llvm::BasicBlock *bb = predBB;
+  BasicBlock *bb = predBB;
  
   while (true) {
-    llvm::Instruction *inst = &(bb->back());
+    Instruction *inst = &(bb->back());
     if (inst->getOpcode() == Instruction::Br) {
-      llvm::BranchInst *bi = dyn_cast<BranchInst>(inst);
+      BranchInst *bi = dyn_cast<BranchInst>(inst);
       if (bi->isUnconditional()) {
         bb = bi->getSuccessor(0); 
         if (bb == succBB) {
@@ -790,11 +791,11 @@ bool CFGTree::identifySuccessorRelation(llvm::BasicBlock *predBB,
   return identify; 
 }
 
-static bool brTransferToLoop(llvm::Instruction *inst) {
-  llvm::BranchInst *bi = dyn_cast<BranchInst>(inst);
+static bool brTransferToLoop(Instruction *inst) {
+  BranchInst *bi = dyn_cast<BranchInst>(inst);
    
   for (unsigned i = 0; i < bi->getNumSuccessors(); i++) {
-    llvm::BasicBlock *bb = bi->getSuccessor(i);
+    BasicBlock *bb = bi->getSuccessor(i);
     std::string bbName = bb->getName().str();
 
     if (bbName.find("while") != std::string::npos
@@ -804,15 +805,15 @@ static bool brTransferToLoop(llvm::Instruction *inst) {
   return false;
 }
 
-bool CFGTree::enterIteration(llvm::Instruction *inst, 
+bool CFGTree::enterIteration(Instruction *inst, 
                              CFGNode *current,
                              std::set<BasicBlock*> &exploredBBSet,
                              bool blockChange) {
   std::string brName = current->inst->getName().str();
   if (!iterateCFGNode && blockChange) {
     if (brTransferToLoop(current->inst)) {
-      llvm::BasicBlock *instBB = inst->getParent();
-      llvm::BasicBlock *curNodeBB = current->inst->getParent();
+      BasicBlock *instBB = inst->getParent();
+      BasicBlock *curNodeBB = current->inst->getParent();
     
       if (instBB == curNodeBB)
         return true;
@@ -827,7 +828,7 @@ bool CFGTree::enterIteration(llvm::Instruction *inst,
   return false;
 }
 
-void CFGTree::updateCurrentNode(llvm::Instruction *inst, 
+void CFGTree::updateCurrentNode(Instruction *inst, 
                                 bool &transfer) {
   CFGNode *tmp = current;
   BasicBlock *bb = inst->getParent();
