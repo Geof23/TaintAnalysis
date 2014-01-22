@@ -23,7 +23,7 @@ char TaintAnalysisCUDA::ID = 0;
 
 RegisterPass<TaintAnalysisCUDA> Y("taint", "Taint analysis pass");
 
-static std::string strip(std::string &in) {
+static string strip(string &in) {
   unsigned len = in.size();
   unsigned lead = 0, trail = len;
   while (lead<len && isspace(in[lead]))
@@ -93,22 +93,22 @@ void VFunction::setCurrentInstThroughEntry(unsigned entry) {
 
 void VFunction::dumpVFunctionInst() {
   for (unsigned i = 0; i < numInsts; i++) {
-    std::cout << "inst " << i << ": " << std::endl;
+    cout << "inst " << i << ": " << endl;
     insts[i]->inst->dump();
   }
 }
 
 bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
   const char* c_file = "kernelSet.txt";
-  std::ifstream f(c_file);
+  ifstream f(c_file);
   assert(f.is_open() && "unable to open kernelSet.txt file");
 
   while (!f.eof()) {
-    std::string line;
-    std::getline(f, line);
+    string line;
+    getline(f, line);
     line = strip(line);
     if (!line.empty())
-      kernelSet.insert(std::make_pair(line, false));
+      kernelSet.insert(make_pair(line, false));
   }
   f.close();
   curVFunc = NULL;
@@ -119,7 +119,7 @@ bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
     llvm::GlobalValue *gv = dyn_cast<llvm::GlobalValue>(gi);
 
     if (gv && gv->hasSection()) {
-      std::string sec = gv->getSection();
+      string sec = gv->getSection();
       if (sec == "__shared__") {
         sharedSet.push_back(GlobalSharedTaint(gv)); 
         unsigned size = sharedSet.size();
@@ -170,7 +170,7 @@ void TaintAnalysisCUDA::transferToBasicBlock(BasicBlock *dst) {
 }
 
 void TaintAnalysisCUDA::handleBrInst(Instruction *inst, 
-                                     std::vector<TaintArgInfo> &taintArgSet) {
+                                     vector<TaintArgInfo> &taintArgSet) {
   BranchInst *bi = dyn_cast<BranchInst>(inst);
   if (bi->isUnconditional()) {
     transferToBasicBlock(bi->getSuccessor(0));
@@ -191,9 +191,9 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
         if (Verbose > 0) {
           TAINT_INFO2 << "The Br instruction is tainted w.r.t. the argument: " 
                       << taintArgSet[i].arg->getName().str()
-                      << std::endl;
+                      << endl;
         } else {
-          std::ofstream file("summary.txt", ios::app);
+          ofstream file("summary.txt", ios::app);
           if (file.is_open()) {
             file << "The Br instruction is tainted w.r.t. the argument: "
                  << taintArgSet[i].arg->getName().str() << "\n";
@@ -233,7 +233,7 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
 
 void TaintAnalysisCUDA::transferToIterationPostDom(llvm::Instruction *inst) {
   if (Verbose > 0) {
-    std::cout << "transferToIterationPostDom inst: " << std::endl;
+    cout << "transferToIterationPostDom inst: " << endl;
     inst->dump();
   }
   BasicBlock *postDom = ExecutorUtil::findNearestCommonPostDominator(inst, true); 
@@ -252,7 +252,7 @@ void TaintAnalysisCUDA::transferToTheOtherSideCurrentNode() {
 }
 
 void TaintAnalysisCUDA::handleSwitchInst(Instruction *inst, 
-                                         std::vector<TaintArgInfo> &taintArgSet) {
+                                         vector<TaintArgInfo> &taintArgSet) {
   SwitchInst *si = dyn_cast<SwitchInst>(inst); 
   Value *cond = si->getCondition();
    
@@ -266,9 +266,9 @@ void TaintAnalysisCUDA::handleSwitchInst(Instruction *inst,
       if (Verbose > 0) {
         TAINT_INFO2 << "The Switch instruction is tainted w.r.t the argument: " 
                     << taintArgSet[i].arg->getName().str()
-                    << std::endl;
+                    << endl;
       } else {
-        std::ofstream file("summary.txt", ios::app);
+        ofstream file("summary.txt", ios::app);
         if (file.is_open()) {
           file << "The Switch instruction is tainted w.r.t. the argument: "
                << taintArgSet[i].arg->getName().str() << "\n";
@@ -292,7 +292,7 @@ void TaintAnalysisCUDA::handleSwitchInst(Instruction *inst,
 }
 
 void TaintAnalysisCUDA::handlePHINode(Instruction *inst, 
-                                      std::vector<TaintArgInfo> &taintArgSet) {
+                                      vector<TaintArgInfo> &taintArgSet) {
   PHINode *pi = dyn_cast<PHINode>(inst);
 
   for (unsigned i = 0; i < pi->getNumIncomingValues(); i++) {
@@ -315,7 +315,7 @@ void TaintAnalysisCUDA::handlePHINode(Instruction *inst,
 }
 
 void TaintAnalysisCUDA::handleSelectInst(Instruction *inst, 
-                                         std::vector<TaintArgInfo> &taintArgSet) {
+                                         vector<TaintArgInfo> &taintArgSet) {
   SelectInst *si = dyn_cast<SelectInst>(inst);
   Value *cond = si->getCondition(); 
 
@@ -329,9 +329,9 @@ void TaintAnalysisCUDA::handleSelectInst(Instruction *inst,
       if (Verbose > 0) {
         TAINT_INFO2 << "The Select instruction is tainted w.r.t. argument: " 
                     << taintArgSet[i].arg->getName().str() 
-                    << std::endl;
+                    << endl;
       } else {
-        std::ofstream file("summary.txt", ios::app);
+        ofstream file("summary.txt", ios::app);
         if (file.is_open()) {
           file << "The Select instruction is tainted w.r.t. the argument: "
                << taintArgSet[i].arg->getName().str() << "\n";
@@ -351,12 +351,12 @@ void TaintAnalysisCUDA::handleSelectInst(Instruction *inst,
   }
 }
 
-static bool isCUDAArithmeticIntrinsic(std::string fName) {
-  return (fName.find("mulhi") != std::string::npos
-          || fName.find("mul64hi") != std::string::npos
-          || fName.find("mul24") != std::string::npos 
-          || fName.find("sad") != std::string::npos 
-          || fName.find("fdivide") != std::string::npos
+static bool isCUDAArithmeticIntrinsic(string fName) {
+  return (fName.find("mulhi") != string::npos
+          || fName.find("mul64hi") != string::npos
+          || fName.find("mul24") != string::npos 
+          || fName.find("sad") != string::npos 
+          || fName.find("fdivide") != string::npos
           || fName.compare("__sinf") == 0
           || fName.compare("__cosf") == 0
           || fName.compare("__tanf") == 0
@@ -366,89 +366,89 @@ static bool isCUDAArithmeticIntrinsic(std::string fName) {
           || fName.compare("sin") == 0
           || fName.compare("cos") == 0
           || fName.compare("tan") == 0
-          || fName.find("sinpi") != std::string::npos
-          || fName.find("cospi") != std::string::npos
-          || fName.find("exp") != std::string::npos
-          || fName.find("log") != std::string::npos
-          || fName.find("pow") != std::string::npos
-          || fName.find("min") != std::string::npos
-          || fName.find("max") != std::string::npos
-          || fName.find("__fadd_") != std::string::npos
-          || fName.find("__dadd_") != std::string::npos
-          || fName.find("__fmul_") != std::string::npos
-          || fName.find("__dmul_") != std::string::npos
-          || fName.find("fma") != std::string::npos
-          || fName.find("rcp") != std::string::npos
-          || fName.find("sqrt") != std::string::npos
-          || fName.find("__fdiv_") != std::string::npos
-          || fName.find("__ddiv_") != std::string::npos
-          || fName.find("clz") != std::string::npos
-          || fName.find("ffs") != std::string::npos
-          || fName.find("popc") != std::string::npos
-          || fName.find("brev") != std::string::npos
-          || fName.find("byte_perm") != std::string::npos
-          || fName.find("hadd") != std::string::npos
-          || fName.find("abs") != std::string::npos
-          || fName.find("saturate") != std::string::npos
-          || fName.find("round") != std::string::npos
-          || fName.find("trunc") != std::string::npos
-          || fName.find("floor") != std::string::npos
-          || fName.find("ceil") != std::string::npos
-          || fName.find("fmod") != std::string::npos);
+          || fName.find("sinpi") != string::npos
+          || fName.find("cospi") != string::npos
+          || fName.find("exp") != string::npos
+          || fName.find("log") != string::npos
+          || fName.find("pow") != string::npos
+          || fName.find("min") != string::npos
+          || fName.find("max") != string::npos
+          || fName.find("__fadd_") != string::npos
+          || fName.find("__dadd_") != string::npos
+          || fName.find("__fmul_") != string::npos
+          || fName.find("__dmul_") != string::npos
+          || fName.find("fma") != string::npos
+          || fName.find("rcp") != string::npos
+          || fName.find("sqrt") != string::npos
+          || fName.find("__fdiv_") != string::npos
+          || fName.find("__ddiv_") != string::npos
+          || fName.find("clz") != string::npos
+          || fName.find("ffs") != string::npos
+          || fName.find("popc") != string::npos
+          || fName.find("brev") != string::npos
+          || fName.find("byte_perm") != string::npos
+          || fName.find("hadd") != string::npos
+          || fName.find("abs") != string::npos
+          || fName.find("saturate") != string::npos
+          || fName.find("round") != string::npos
+          || fName.find("trunc") != string::npos
+          || fName.find("floor") != string::npos
+          || fName.find("ceil") != string::npos
+          || fName.find("fmod") != string::npos);
 }
 
-static bool isCUDAConversionIntrinsic(std::string fName) {
-  return (fName.find("__float2int_") != std::string::npos
-          || fName.find("__float2uint_") != std::string::npos
-          || fName.find("__int2float_") != std::string::npos
-          || fName.find("__uint2float_") != std::string::npos
-          || fName.find("__float2ll_") != std::string::npos
-          || fName.find("__float2ull_") != std::string::npos
-          || fName.find("__ll2float_") != std::string::npos
-          || fName.find("__ull2float_") != std::string::npos
-          || fName.find("__float2half_") != std::string::npos
-          || fName.find("__half2float") != std::string::npos
-          || fName.find("__int2double_") != std::string::npos
-          || fName.find("__uint2double_") != std::string::npos
-          || fName.find("__ll2double_") != std::string::npos
-          || fName.find("__ull2double_") != std::string::npos
-          || fName.find("__double2int_") != std::string::npos
-          || fName.find("__double2uint_") != std::string::npos
-          || fName.find("__double2ll_") != std::string::npos
-          || fName.find("__double2ull_") != std::string::npos
-          || fName.find("__double2hiint_") != std::string::npos
-          || fName.find("__double2loint_") != std::string::npos
-          || fName.find("__hiloint2double") != std::string::npos
-          || fName.find("__float_as_int") != std::string::npos
-          || fName.find("__int_as_float") != std::string::npos
-          || fName.find("__double_as_longlong") != std::string::npos
-          || fName.find("__longlong_as_double") != std::string::npos); 
+static bool isCUDAConversionIntrinsic(string fName) {
+  return (fName.find("__float2int_") != string::npos
+          || fName.find("__float2uint_") != string::npos
+          || fName.find("__int2float_") != string::npos
+          || fName.find("__uint2float_") != string::npos
+          || fName.find("__float2ll_") != string::npos
+          || fName.find("__float2ull_") != string::npos
+          || fName.find("__ll2float_") != string::npos
+          || fName.find("__ull2float_") != string::npos
+          || fName.find("__float2half_") != string::npos
+          || fName.find("__half2float") != string::npos
+          || fName.find("__int2double_") != string::npos
+          || fName.find("__uint2double_") != string::npos
+          || fName.find("__ll2double_") != string::npos
+          || fName.find("__ull2double_") != string::npos
+          || fName.find("__double2int_") != string::npos
+          || fName.find("__double2uint_") != string::npos
+          || fName.find("__double2ll_") != string::npos
+          || fName.find("__double2ull_") != string::npos
+          || fName.find("__double2hiint_") != string::npos
+          || fName.find("__double2loint_") != string::npos
+          || fName.find("__hiloint2double") != string::npos
+          || fName.find("__float_as_int") != string::npos
+          || fName.find("__int_as_float") != string::npos
+          || fName.find("__double_as_longlong") != string::npos
+          || fName.find("__longlong_as_double") != string::npos); 
 
 } 
 
-static bool isCUDAAtomicIntrinsic(std::string fName) {
-  return (fName.find("AtomicAdd") != std::string::npos
-          || fName.find("AtomicExch") != std::string::npos
-          || fName.find("AtomicMin") != std::string::npos
-          || fName.find("AtomicMax") != std::string::npos
-          || fName.find("AtomicInc") != std::string::npos
-          || fName.find("AtomicDec") != std::string::npos
-          || fName.find("AtomicCas") != std::string::npos
-          || fName.find("AtomicAnd") != std::string::npos
-          || fName.find("AtomicOr") != std::string::npos
-          || fName.find("AtomicXor") != std::string::npos);
+static bool isCUDAAtomicIntrinsic(string fName) {
+  return (fName.find("AtomicAdd") != string::npos
+          || fName.find("AtomicExch") != string::npos
+          || fName.find("AtomicMin") != string::npos
+          || fName.find("AtomicMax") != string::npos
+          || fName.find("AtomicInc") != string::npos
+          || fName.find("AtomicDec") != string::npos
+          || fName.find("AtomicCas") != string::npos
+          || fName.find("AtomicAnd") != string::npos
+          || fName.find("AtomicOr") != string::npos
+          || fName.find("AtomicXor") != string::npos);
 }
 
 void TaintAnalysisCUDA::executeCall(Instruction *inst, 
                                     Function *f, 
-                                    std::vector<TaintArgInfo> &taintArgSet, 
+                                    vector<TaintArgInfo> &taintArgSet, 
                                     AliasAnalysis &AA) {
   return;
 }
 
 void TaintAnalysisCUDA::executeCUDAArithOrConvIntrinsic(Instruction *inst, 
-                                                        std::string fName,
-                                                        std::vector<TaintArgInfo> &taintArgSet) {
+                                                        string fName,
+                                                        vector<TaintArgInfo> &taintArgSet) {
   // check if the code in a branch 
   // relates to the race checking
   for (unsigned i = 0; i < inst->getNumOperands(); i++) {
@@ -471,8 +471,8 @@ void TaintAnalysisCUDA::executeCUDAArithOrConvIntrinsic(Instruction *inst,
 }
 
 void TaintAnalysisCUDA::executeCUDAAtomicIntrinsic(Instruction *inst, 
-                                                   std::string fName,
-                                                   std::vector<TaintArgInfo> &taintArgSet) {
+                                                   string fName,
+                                                   vector<TaintArgInfo> &taintArgSet) {
   // check if the code in a branch 
   // relates to the race checking
   for (unsigned i = 0; i < inst->getNumOperands(); i++) {
@@ -489,16 +489,16 @@ void TaintAnalysisCUDA::executeCUDAAtomicIntrinsic(Instruction *inst,
                                               taintArgSet[i].taintValueSet)) {
         taintArgSet[i].taintInstList.insert(inst);
     
-        if (fName.find("AtomicMin") != std::string::npos 
-             || fName.find("AtomicMax") != std::string::npos
-               || fName.find("AtomicCas") != std::string::npos) {
+        if (fName.find("AtomicMin") != string::npos 
+             || fName.find("AtomicMax") != string::npos
+               || fName.find("AtomicCas") != string::npos) {
           if (Verbose > 0) {
             TAINT_INFO2 << "The argument in Atomic{Min,Max,Cas} is tainted" 
                         << " w.r.t. argument: " 
                         << taintArgSet[i].arg->getName().str()
-                        << std::endl;
+                        << endl;
           } else {
-            std::ofstream file("summary.txt", ios::app);
+            ofstream file("summary.txt", ios::app);
             if (file.is_open()) {
               file << "The argument in Atomic{Min,Max,Cas} is tainted "
                    << "w.r.t. the argument: "
@@ -516,8 +516,8 @@ void TaintAnalysisCUDA::executeCUDAAtomicIntrinsic(Instruction *inst,
 
 void TaintAnalysisCUDA::executeCUDAIntrinsic(Instruction *inst,
                                              Function *f, 
-                                             std::vector<TaintArgInfo> &taintArgSet) {
-  std::string fName = f->getName().str();
+                                             vector<TaintArgInfo> &taintArgSet) {
+  string fName = f->getName().str();
 
   if (isCUDAArithmeticIntrinsic(fName)
        || isCUDAConversionIntrinsic(fName)) {
@@ -528,7 +528,7 @@ void TaintAnalysisCUDA::executeCUDAIntrinsic(Instruction *inst,
 }
 
 void TaintAnalysisCUDA::handleArithmeticInst(Instruction *inst, 
-                                             std::vector<TaintArgInfo> &taintArgSet) { 
+                                             vector<TaintArgInfo> &taintArgSet) { 
   Value *left = inst->getOperand(0);    
   Value *right = inst->getOperand(1);    
 
@@ -573,7 +573,7 @@ void TaintAnalysisCUDA::handleArithmeticInst(Instruction *inst,
 }
 
 void TaintAnalysisCUDA::handleCmpInst(Instruction *inst, 
-                                      std::vector<TaintArgInfo> &taintArgSet) {
+                                      vector<TaintArgInfo> &taintArgSet) {
   Value *left = inst->getOperand(0); 
   Value *right = inst->getOperand(1); 
 
@@ -594,8 +594,8 @@ void TaintAnalysisCUDA::handleCmpInst(Instruction *inst,
 }
 
 bool ExecutorUtil::findValueFromTaintSet(Value *val, 
-                                         std::set<Instruction*> &taintInstList, 
-                                         std::set<Value*> &taintValueSet) {
+                                         set<Instruction*> &taintInstList, 
+                                         set<Value*> &taintValueSet) {
   if (Instruction *si = dyn_cast<Instruction>(val)) {
     if (taintInstList.find(si) != taintInstList.end()) {
       if (Verbose > 0) {
@@ -649,7 +649,7 @@ BasicBlock* ExecutorUtil::findNearestCommonPostDominator(llvm::Instruction *inst
 
 void ExecutorUtil::insertGlobalSharedSet(Instruction *inst, 
                                          Value *pointer, 
-                                         std::vector<GlobalSharedTaint> &set) {
+                                         vector<GlobalSharedTaint> &set) {
   for (unsigned i = 0; i < set.size(); i++) {
     if (inst->getType()->isPointerTy()
          && ExecutorUtil::findValueFromTaintSet(pointer, 
@@ -660,30 +660,30 @@ void ExecutorUtil::insertGlobalSharedSet(Instruction *inst,
   }
 }
 
-void ExecutorUtil::dumpTaintInstList(std::set<Instruction*> &taintInstList) {
+void ExecutorUtil::dumpTaintInstList(set<Instruction*> &taintInstList) {
   if (taintInstList.size())
-    TAINT_INFO2 << "Dump TaintInstList: " << std::endl;
+    TAINT_INFO2 << "Dump TaintInstList: " << endl;
   unsigned i = 0;
-  for (std::set<Instruction*>::iterator si = taintInstList.begin();
+  for (set<Instruction*>::iterator si = taintInstList.begin();
        si != taintInstList.end(); si++, i++) {
-    TAINT_INFO2 << "TaintInstList[" << i << "]: " << std::endl;
+    TAINT_INFO2 << "TaintInstList[" << i << "]: " << endl;
     (*si)->dump();
   }
 }
 
-void ExecutorUtil::dumpTaintValueSet(std::set<Value*> &taintValueSet) {
+void ExecutorUtil::dumpTaintValueSet(set<Value*> &taintValueSet) {
   if (taintValueSet.size())
-    TAINT_INFO2 << "Dump TaintValueSet: " << std::endl;
+    TAINT_INFO2 << "Dump TaintValueSet: " << endl;
   unsigned i = 0;
-  for (std::set<Value*>::iterator si = taintValueSet.begin(); 
+  for (set<Value*>::iterator si = taintValueSet.begin(); 
        si != taintValueSet.end(); si++, i++) {
-    TAINT_INFO2 << "TaintValueSet[" << i << "]: " << std::endl; 
+    TAINT_INFO2 << "TaintValueSet[" << i << "]: " << endl; 
     (*si)->dump();
   }
 }
 
 void TaintAnalysisCUDA::handleLoadInst(Instruction *inst, 
-                                       std::vector<TaintArgInfo> &taintArgSet, 
+                                       vector<TaintArgInfo> &taintArgSet, 
                                        AliasAnalysis &AA) {
   LoadInst *load = dyn_cast<LoadInst>(inst); 
   Value *pointer = load->getPointerOperand(); 
@@ -703,8 +703,8 @@ void TaintAnalysisCUDA::handleLoadInst(Instruction *inst,
 }
 
 void TaintAnalysisCUDA::handlePointerOperand(Instruction *inst,
-                                             std::set<Instruction*> &instSet, 
-                                             std::set<Value*> &valueSet) {
+                                             set<Instruction*> &instSet, 
+                                             set<Value*> &valueSet) {
   unsigned num = inst->getNumOperands();
 
   for (unsigned i = 0; i < num; i++) {
@@ -723,14 +723,14 @@ void TaintAnalysisCUDA::handlePointerOperand(Instruction *inst,
 }
 
 void TaintAnalysisCUDA::handleStoreInst(Instruction *inst, 
-                                        std::vector<TaintArgInfo> &taintArgSet,
+                                        vector<TaintArgInfo> &taintArgSet,
                                         AliasAnalysis &AA) {
   StoreInst *store = dyn_cast<StoreInst>(inst);
   Value *valueOp = store->getValueOperand();
   Value *pointerOp = store->getPointerOperand();
  
   // check taint set
-  for (std::vector<TaintArgInfo>::iterator vi = taintArgSet.begin(); 
+  for (vector<TaintArgInfo>::iterator vi = taintArgSet.begin(); 
        vi != taintArgSet.end(); vi++) {
     // If value is tainted, then we set the address referring 
     // to this value as tainted 
@@ -747,7 +747,7 @@ void TaintAnalysisCUDA::handleStoreInst(Instruction *inst,
   }
 
   // check global set
-  for (std::vector<GlobalSharedTaint>::iterator vi = glSet.begin(); 
+  for (vector<GlobalSharedTaint>::iterator vi = glSet.begin(); 
        vi != glSet.end(); vi++) {
     if (valueOp->getType()->isPointerTy()
          && ExecutorUtil::findValueFromTaintSet(valueOp, 
@@ -763,7 +763,7 @@ void TaintAnalysisCUDA::handleStoreInst(Instruction *inst,
   }
 
   // check shared set
-  for (std::vector<GlobalSharedTaint>::iterator vi = sharedSet.begin(); 
+  for (vector<GlobalSharedTaint>::iterator vi = sharedSet.begin(); 
        vi != sharedSet.end(); vi++) {
     if (valueOp->getType()->isPointerTy()
          && ExecutorUtil::findValueFromTaintSet(valueOp, 
@@ -784,14 +784,14 @@ void TaintAnalysisCUDA::checkCFGTaintSetAffectRaceChecking(Value *val,
                                                            bool sSink) {
   if (Instruction *in = dyn_cast<Instruction>(val)) {
     // check if inst will be affected by instruction in the exploredCFGInst
-    for (std::set<CFGNode*>::iterator si = exploredCFGNodes.begin(); 
+    for (set<CFGNode*>::iterator si = exploredCFGNodes.begin(); 
          si != exploredCFGNodes.end(); si++) {
-      std::vector<CFGTaintSet> &cfgTaintSet = (*si)->cfgInstSet;
+      vector<CFGTaintSet> &cfgTaintSet = (*si)->cfgInstSet;
       for (unsigned i = 0; i < cfgTaintSet.size(); i++) {
-        // std::cout << "cfgTaintSet " << i << " explore : " 
+        // cout << "cfgTaintSet " << i << " explore : " 
         // << cfgTaintSet[i].explore << ", the inst Set: " 
-        // << std::endl;
-        // for (std::set<Instruction*>::iterator si = cfgTaintSet[i].instSet.begin();
+        // << endl;
+        // for (set<Instruction*>::iterator si = cfgTaintSet[i].instSet.begin();
         //     si != cfgTaintSet[i].instSet.end(); si++) {
         //  (*si)->dump();
         // }         
@@ -804,8 +804,8 @@ void TaintAnalysisCUDA::checkCFGTaintSetAffectRaceChecking(Value *val,
           if (sSink) {
             if (Verbose > 0) {
               // explore is set true, and update the CFGTree 
-              std::cout << "The instruction used in the sensitive sinks: " 
-                        << std::endl;
+              cout << "The instruction used in the sensitive sinks: " 
+                        << endl;
               inst->dump();
             }
             cfgTaintSet[i].explore = true;
@@ -817,7 +817,7 @@ void TaintAnalysisCUDA::checkCFGTaintSetAffectRaceChecking(Value *val,
 }
 
 void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst, 
-                                       std::vector<TaintArgInfo> &taintArgSet) {
+                                       vector<TaintArgInfo> &taintArgSet) {
   GetElementPtrInst *gepi = dyn_cast<GetElementPtrInst>(inst);
 
   // To test other arguments are tainted or not  
@@ -829,10 +829,10 @@ void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst,
                                               taintArgSet[i].taintInstList, 
                                               taintArgSet[i].taintValueSet)) {
         if (Verbose > 0) {
-          TAINT_INFO2 << "The index is tainted, the index: " << std::endl;
+          TAINT_INFO2 << "The index is tainted, the index: " << endl;
           element->dump(); 
         } else {
-          std::ofstream file("summary.txt", ios::app);
+          ofstream file("summary.txt", ios::app);
           if (file.is_open()) {
             file << "The index is tainted w.r.t. the argument: "
                  << taintArgSet[i].arg->getName().str() << "\n";
@@ -848,7 +848,7 @@ void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst,
 }
 
 void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst, 
-                                                std::vector<TaintArgInfo> &taintArgSet,
+                                                vector<TaintArgInfo> &taintArgSet,
                                                 AliasAnalysis &AA) {
   GetElementPtrInst *gepi = dyn_cast<GetElementPtrInst>(inst); 
   Value *pointer = gepi->getPointerOperand();
@@ -897,7 +897,7 @@ void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst,
 }
 
 void TaintAnalysisCUDA::handleConversionInst(Instruction *inst, 
-                                             std::vector<TaintArgInfo> &taintArgSet) {
+                                             vector<TaintArgInfo> &taintArgSet) {
   Value *val = inst->getOperand(0); 
 
   checkCFGTaintSetAffectRaceChecking(val, inst, false);
@@ -932,7 +932,7 @@ void TaintAnalysisCUDA::handleConversionInst(Instruction *inst,
 
 // Return value : block is changed or not 
 bool TaintAnalysisCUDA::executeInstruction(llvm::Instruction *inst,
-                                           std::vector<TaintArgInfo> &taintArgSet,
+                                           vector<TaintArgInfo> &taintArgSet,
                                            AliasAnalysis &AA) {
   bool blockChange = false;
 
@@ -960,7 +960,7 @@ bool TaintAnalysisCUDA::executeInstruction(llvm::Instruction *inst,
       CallSite cs(inst);
       Value *fp = cs.getCalledValue();
       Function *f = getTargetFunction(fp);
-      std::string fName = f->getName().str();
+      string fName = f->getName().str();
       if (f) {
         if (!f->isDeclaration()) {
           // Non-declaration 
@@ -1039,8 +1039,8 @@ bool TaintAnalysisCUDA::executeInstruction(llvm::Instruction *inst,
       break; 
     }
     default: {
-      std::cout << "unsupported inst encountered!" << std::endl;
-      std::cout << "inst opcode: " << inst->getOpcodeName() << std::endl;
+      cout << "unsupported inst encountered!" << endl;
+      cout << "inst opcode: " << inst->getOpcodeName() << endl;
       inst->dump();
       break;
     }
@@ -1053,8 +1053,8 @@ static bool isReturnInst(llvm::Instruction *inst) {
   return inst->getOpcode() == Instruction::Ret; 
 }
 
-static bool allKernelsExplored(std::map<std::string, bool> &kernelSet) {
-  for (std::map<std::string, bool>::iterator it = kernelSet.begin();
+static bool allKernelsExplored(map<string, bool> &kernelSet) {
+  for (map<string, bool>::iterator it = kernelSet.begin();
        it != kernelSet.end(); it++) {
     if (!it->second) 
       return false; 
@@ -1067,37 +1067,37 @@ static void extractInstFromSourceCode(MDNode *N) {
   unsigned Line = Loc.getLineNumber();
   StringRef File = Loc.getFilename();
   StringRef Dir = Loc.getDirectory();
-  std::cout << "Instruction Line: " << Line << ", In File: "
+  cout << "Instruction Line: " << Line << ", In File: "
             << File.str() << ", With Dir Path: " << Dir.str()
-            << std::endl;
+            << endl;
 
-  std::string filePath = Dir.str() + "/" + File.str();
-  std::ifstream src(filePath.data(), std::ifstream::in);
+  string filePath = Dir.str() + "/" + File.str();
+  ifstream src(filePath.data(), ifstream::in);
   if (src.is_open()) {
     unsigned num = 0;
-    std::string cLine;
+    string cLine;
     do {
       getline(src, cLine);
       num++;
     } while (num != Line);
 
-    std::cout << "[File: " << filePath << ", Line: " << Line
-              << ", Inst: " << cLine << "]" << std::endl;
+    cout << "[File: " << filePath << ", Line: " << Line
+              << ", Inst: " << cLine << "]" << endl;
   } else {
-    std::cout << "Can not open file!" << std::endl;
+    cout << "Can not open file!" << endl;
   }
 }
 
 void TaintAnalysisCUDA::dumpTaintArgInfo(TaintArgInfo &argInfo) {
   TAINT_INFO2 << "In function [ " << argInfo.fName 
               << "], the " << argInfo.argNum << " argument: " 
-              << std::endl;
+              << endl;
   argInfo.arg->dump();
 
-  std::set<Instruction*> &taintInstList = argInfo.taintInstList;
-  for (std::set<Instruction*>::iterator si = taintInstList.begin(); 
+  set<Instruction*> &taintInstList = argInfo.taintInstList;
+  for (set<Instruction*>::iterator si = taintInstList.begin(); 
        si != taintInstList.end(); si++) {
-    TAINT_INFO2 << "Inst: " << std::endl;    
+    TAINT_INFO2 << "Inst: " << endl;    
     if (MDNode *N = (*si)->getMetadata("dbg")) {  
       // Here I is an LLVM instruction
       extractInstFromSourceCode(N);
@@ -1108,7 +1108,7 @@ void TaintAnalysisCUDA::dumpTaintArgInfo(TaintArgInfo &argInfo) {
   }
 }
 
-static bool existTaintInArgTaintSet(std::vector<TaintArgInfo> &taintArgSet, 
+static bool existTaintInArgTaintSet(vector<TaintArgInfo> &taintArgSet, 
                                     unsigned &num) {
   bool taint = false;
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
@@ -1121,7 +1121,7 @@ static bool existTaintInArgTaintSet(std::vector<TaintArgInfo> &taintArgSet,
 }
 
 bool TaintAnalysisCUDA::dumpAliasResult(Value *pointer, AliasAnalysis &AA, 
-                                        std::vector<Value*> &sharedSet, 
+                                        vector<Value*> &sharedSet, 
                                         unsigned &num) {
   bool alias = false;
 
@@ -1161,8 +1161,8 @@ void TaintAnalysisCUDA::encounterSyncthreadsBarrier(Instruction *inst) {
           CallSite cs(inst);
           Value *fp = cs.getCalledValue();
           Function *f = getTargetFunction(fp);
-          std::string fName = f->getName().str();
-          if (fName.find("__syncthreads") != std::string::npos) {
+          string fName = f->getName().str();
+          if (fName.find("__syncthreads") != string::npos) {
             // start checking  
             CFGNode *flowCurrent = cfgTree->getFlowCurrentNode();  
             cfgTree->startDFSCheckingForCurrentBI(flowCurrent); 
@@ -1178,7 +1178,7 @@ void TaintAnalysisCUDA::encounterSyncthreadsBarrier(Instruction *inst) {
 }
 
 void TaintAnalysisCUDA::insertCurInstToCFGTree(Instruction *inst,
-                                               std::vector<TaintArgInfo> &taintArgSet, 
+                                               vector<TaintArgInfo> &taintArgSet, 
                                                AliasAnalysis &AA) {
   if (!cfgTree->inIteration()) {
     if (cfgTree->getCurrentNode()) {
@@ -1203,18 +1203,18 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
                                           AliasAnalysis &AA) {
   // local dafalseta structures which are populated for each function
   // iterate through the paremeter list of the kernel
-  std::vector<TaintArgInfo> taintArgSet;
+  vector<TaintArgInfo> taintArgSet;
   unsigned totalArgNum = 0;
   cfgTree = new CFGTree();
 
   if (Verbose > 0) {
     TAINT_INFO2 << "****************************************"
-                << std::endl;
+                << endl;
   } else {
-    std::ofstream file("summary.txt", ios::app);
+    ofstream file("summary.txt", ios::app);
     if (file.is_open()) {
       file << "****************************************"
-           << std::endl;
+           << endl;
     }
     file.close();
   }
@@ -1226,16 +1226,16 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
       if (Verbose > 0) {
         TAINT_INFO2 << "The " << totalArgNum 
                     << " (pointer) argument of function " 
-                    << f->getName().str() << ": " << std::endl;
+                    << f->getName().str() << ": " << endl;
         arg->dump();
       } else {
-        std::ofstream file("summary.txt", ios::app);
+        ofstream file("summary.txt", ios::app);
         if (file.is_open()) {
           file << "The " << totalArgNum 
                << " (pointer) argument of function " 
-               << f->getName().str() << ": " << std::endl;
+               << f->getName().str() << ": " << endl;
           file << arg->getName().str() 
-               << std::endl;
+               << endl;
         }
         file.close();
       }
@@ -1248,18 +1248,18 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
   }
 
   if (Verbose > 0) {
-    std::cout << std::endl;
+    cout << endl;
     TAINT_INFO2 << "Start evaluating " << taintArgSet.size() 
                 << " (pointer) arguments of function " 
                 << f->getName().str() 
-                << std::endl;
+                << endl;
   } else {
-    std::ofstream file("summary.txt", ios::app);
+    ofstream file("summary.txt", ios::app);
     if (file.is_open()) {
-      file << std::endl;
+      file << endl;
       file << "Start evaluating " << taintArgSet.size() 
            << " (pointer) arguments of function " << f->getName().str() 
-           << std::endl;
+           << endl;
     }
     file.close();
   }
@@ -1270,7 +1270,7 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
   while (true) {
     Instruction *inst = curVFunc->getCurrentInst();
     if (Verbose > 0) {
-      std::cout << "\nget current inst: " << std::endl;
+      cout << "\nget current inst: " << endl;
       inst->dump();
     }
 
@@ -1318,16 +1318,16 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
       TAINT_INFO2 << "\n+++In the kernel " << f->getName().str() 
                   << ", no need to set its " 
                   << totalArgNum << " arguments as [Tainted]+++"
-                  << std::endl;
+                  << endl;
     } else {
-      std::ofstream file("summary.txt", ios::app);
+      ofstream file("summary.txt", ios::app);
       if (file.is_open()) {
         file << "\nIn the kernel " << f->getName().str() 
              << ", no need to set its " 
              << totalArgNum << " arguments as [Tainted]"
-             << std::endl;
+             << endl;
       }
-      file << "=====================================" << std::endl;
+      file << "=====================================" << endl;
       file.close();
     }
   } else {
@@ -1335,30 +1335,30 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
       TAINT_INFO2 << "\nIn the kernel " << f->getName().str() 
                   << ", have to set " << num << " arguments over "
                   << totalArgNum << " arguments as [Tainted]"
-                  << std::endl;
+                  << endl;
 
       for (unsigned i = 0; i < taintArgSet.size(); i++) {
         if (taintArgSet[i].taint) {
-          TAINT_INFO2 << "The " << i << " argument: " << std::endl;
+          TAINT_INFO2 << "The " << i << " argument: " << endl;
           dumpTaintArgInfo(taintArgSet[i]);
         }
       }
-      TAINT_INFO2 << "=====================================" << std::endl;
+      TAINT_INFO2 << "=====================================" << endl;
     } else {
-      std::ofstream file("summary.txt", ios::app);
+      ofstream file("summary.txt", ios::app);
       if (file.is_open()) {
-        file << std::endl;
+        file << endl;
         file << "\nIn the kernel " << f->getName().str() 
              << ", have to set " << num << " arguments over "
              << totalArgNum << " arguments as [Tainted]"
-             << std::endl;
+             << endl;
       }
       for (unsigned i = 0; i < taintArgSet.size(); i++) {
         if (taintArgSet[i].taint) {
           file << "The " << i << " argument: " 
                << taintArgSet[i].arg->getName().str()
-               << std::endl;
-          file << "=====================================" << std::endl;
+               << endl;
+          file << "=====================================" << endl;
         }
       }
       file.close();
@@ -1376,7 +1376,7 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
 bool TaintAnalysisCUDA::runOnFunction(llvm::Function &F) {
   AliasAnalysis &AA = getAnalysis<AliasAnalysis>();
 
-  std::string fName = F.getName().str();
+  string fName = F.getName().str();
   if (kernelSet.find(fName) == kernelSet.end()) {
     // do not explore the function 
     // which is not in the kernel list
@@ -1393,9 +1393,9 @@ bool TaintAnalysisCUDA::runOnFunction(llvm::Function &F) {
   
   if (allKernelsExplored(kernelSet)) {
     if (Verbose > 0) {
-      TAINT_INFO2 << "All kernels are explored" << std::endl;
+      TAINT_INFO2 << "All kernels are explored" << endl;
     }
-    for (std::vector<VFunction*>::iterator it = functions.begin(); 
+    for (vector<VFunction*>::iterator it = functions.begin(); 
          it != functions.end(); it++) {
       delete *it;
     }
