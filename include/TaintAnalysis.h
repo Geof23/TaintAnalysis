@@ -53,7 +53,7 @@ public:
   std::vector<RelValue> globalReadVec;
   std::vector<RelValue> globalWriteVec;
 
-  RelFlowSet(); 
+  explicit RelFlowSet() {}
 
   ~RelFlowSet() {
     sharedReadVec.clear();
@@ -70,23 +70,24 @@ public:
   }
 };
 
-class CFGTaintSet {
+class CFGInstSet {
 public: 
   // This branch must be explored if set true
   // because this branch potentially will influence 
   // the race checking 
   bool explore;
   std::set<Instruction*> instSet;
+  std::set<Value*> propSet;
 
-  explicit CFGTaintSet(bool _explore, 
-                       std::set<Instruction*> _instSet) : explore(_explore), 
-                                                          instSet(_instSet) {}
+  explicit CFGInstSet() : explore(false) {}
 
-  CFGTaintSet(const CFGTaintSet &taintSet) : explore(taintSet.explore), 
-                                             instSet(taintSet.instSet) {}
+  CFGInstSet(const CFGInstSet &taintSet) : explore(taintSet.explore), 
+                                           instSet(taintSet.instSet), 
+                                           propSet(taintSet.propSet) {}
 
-  ~CFGTaintSet() {
+  ~CFGInstSet() {
     instSet.clear();
+    propSet.clear();
   } 
 };
 
@@ -101,8 +102,9 @@ public:
   CFGNode *parent;
   bool allFinish;
   bool tainted;
+
   std::vector<CFGNode*> cfgNodes;
-  std::vector<CFGTaintSet> cfgInstSet;
+  std::vector<CFGInstSet> cfgInstSet;
   std::vector<RelFlowSet> cfgFlowSet;
 
   CFGNode *successor;
@@ -120,10 +122,9 @@ public:
     causeIteration = false;
     allFinish = false;
     tainted = false;
-    std::set<Instruction*> instSet;
     for (unsigned i = 0; i < numSuccessors; i++) {
       cfgNodes.push_back(NULL);
-      cfgInstSet.push_back(CFGTaintSet(false, instSet));
+      cfgInstSet.push_back(CFGInstSet());
       cfgFlowSet.push_back(RelFlowSet());
     }
     successor = NULL;
@@ -239,7 +240,7 @@ public:
                      std::vector<GlobalSharedTaint> &glSet,
                      std::vector<GlobalSharedTaint> &sharedSet);
   void setSyncthreadEncounter();
-  bool exploreOneSideOfNode(CFGTaintSet &cfgTaintSet, 
+  bool exploreOneSideOfNode(CFGInstSet &cfgInstSet, 
                             RelFlowSet &relFlowSet, 
                             CFGNode *node, bool glAndsh);
   void exploreNodeCurrentBI(CFGNode *node, 
@@ -279,7 +280,7 @@ private:
   CFGNode *root;
   CFGNode *current;
   CFGNode *flowCurrent;
-  CFGNode* iterateCFGNode;
+  CFGNode *iterateCFGNode;
   std::vector<TaintArgInfo> taintInfoSet;
   bool syncthreadEncounter;
 };
@@ -308,9 +309,9 @@ public:
                        std::vector<Value*> &sharedSet, 
                        unsigned &num); 
   void encounterSyncthreadsBarrier(Instruction *inst);
-  void insertCurInstToCFGTree(Instruction *inst, 
-                              std::vector<TaintArgInfo> &taintArgSet, 
-                              AliasAnalysis &AA);
+  void insertInstToCFGTree(Instruction *inst, 
+                           std::vector<TaintArgInfo> &taintArgSet, 
+                           AliasAnalysis &AA);
   bool exploreCUDAKernel(Function *f, 
                          AliasAnalysis &AA);
   virtual bool runOnFunction(Function &F);
@@ -355,9 +356,9 @@ public:
   void handleStoreInst(Instruction *inst, 
                        std::vector<TaintArgInfo> &argSet, 
                        AliasAnalysis &AA);
-  void checkCFGTaintSetAffectRaceChecking(Value* val, 
-                                          Instruction *inst, 
-                                          bool sSink);
+  void propagateValueInCFGTaintSet(Value* val, 
+                                   Instruction *inst, 
+                                   bool sSink);
   void checkGEPIIndex(Instruction *inst, 
                       std::vector<TaintArgInfo> &argSet);
   void handleGetElementPtrInst(Instruction *inst, 

@@ -292,14 +292,25 @@ void CFGTree::insertCurInst(Instruction *inst,
                             std::vector<GlobalSharedTaint> &sharedSet) {
   if (!current->allFinish) {
     unsigned which = current->which;
-    CFGTaintSet &cfgTaintSet = current->cfgInstSet[which];    
-    cfgTaintSet.instSet.insert(inst);
+    CFGInstSet &cfgInstSet = current->cfgInstSet[which];    
+    cfgInstSet.instSet.insert(inst);
 
-    // To determine if those instructions will affect the following code
+    std::cout << "insertCurInst cfgInstSet which: " << which << " explored : " 
+              << cfgInstSet.explore << ", the inst Set: " 
+              << std::endl;
+    for (std::set<Instruction*>::iterator si = cfgInstSet.instSet.begin();
+         si != cfgInstSet.instSet.end(); si++) {
+      (*si)->dump();
+   }
+
+    // To determine if the pointer operand in the 'Load' instruction
+    // conflicts with shared/global variable 
     if (inst->getOpcode() == Instruction::Load)
       ExecutorUtil::checkLoadInst(inst, glSet, sharedSet, 
                                   AA, current->cfgFlowSet[which]);
 
+    // To determine if the pointer operand in the 'Store' instruction
+    // conflicts with shared/global variable 
     if (inst->getOpcode() == Instruction::Store)
       ExecutorUtil::checkStoreInst(inst, glSet, sharedSet, 
                                    AA, current->cfgFlowSet[which]);
@@ -458,10 +469,10 @@ bool CFGTree::startDFSCheckingForCurrentBI(CFGNode *node) {
 
   if (node != NULL) {
     std::vector<CFGNode*> &treeNodes = node->cfgNodes;
-    std::vector<CFGTaintSet> &cfgTaintSet = node->cfgInstSet;
+    std::vector<CFGInstSet> &cfgInstSet = node->cfgInstSet;
  
     for (unsigned i = 0; i < treeNodes.size(); i++) {
-      if (!cfgTaintSet[i].explore) {
+      if (!cfgInstSet[i].explore) {
         bool singlePath = startDFSCheckingForCurrentBI(treeNodes[i]);
 
         if (!singlePath) {
@@ -469,7 +480,7 @@ bool CFGTree::startDFSCheckingForCurrentBI(CFGNode *node) {
           exploreNodeAcrossBI(node, singlePath, i, false);
         }
         else 
-          cfgTaintSet[i].explore = true;  
+          cfgInstSet[i].explore = true;  
           
         keepPath = keepPath || singlePath; 
       } else {
@@ -593,26 +604,26 @@ void CFGTree::setSyncthreadEncounter() {
   flowCurrent = NULL;
 }
 
-bool CFGTree::exploreOneSideOfNode(CFGTaintSet &cfgTaintSet, 
+bool CFGTree::exploreOneSideOfNode(CFGInstSet &cfgInstSet, 
                                    RelFlowSet &relFlowSet, 
                                    CFGNode *node, bool glAndsh) {
   bool conflictFound = false;
   if (node) {
     for (unsigned i = 0; i < node->cfgNodes.size(); i++) {
-      conflictFound = exploreOneSideOfNode(cfgTaintSet, relFlowSet,
+      conflictFound = exploreOneSideOfNode(cfgInstSet, relFlowSet,
                                            node->cfgNodes[i], glAndsh);
       if (!conflictFound) {
-        conflictFound = existFlowSetConflict(cfgTaintSet.instSet, 
+        conflictFound = existFlowSetConflict(cfgInstSet.instSet, 
                                              relFlowSet, 
                                              node->cfgInstSet[i].instSet, 
                                              node->cfgFlowSet[i], 
                                              glAndsh); 
         if (conflictFound) { 
-          cfgTaintSet.explore = true;
+          cfgInstSet.explore = true;
           node->cfgInstSet[i].explore = true;
         }
       } else {
-        cfgTaintSet.explore = true;
+        cfgInstSet.explore = true;
         node->cfgInstSet[i].explore = true;
       }
     }
@@ -623,17 +634,17 @@ bool CFGTree::exploreOneSideOfNode(CFGTaintSet &cfgTaintSet,
 // Check the ith path of "node"
 void CFGTree::exploreNodeCurrentBI(CFGNode *node, bool &singlePath, 
                                    unsigned i, bool glAndsh) {
-  CFGTaintSet &cfgTaintSet = node->cfgInstSet[i];
+  CFGInstSet &cfgInstSet = node->cfgInstSet[i];
   RelFlowSet &flowSet = node->cfgFlowSet[i];
 
   CFGNode *tmp = node;
   do {
     // check the successor 
-    if (existFlowSetConflict(cfgTaintSet.instSet, flowSet, 
+    if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
                              tmp->succInstSet, 
                              tmp->succFlowSet, glAndsh)) {
       //dumpNodeInstForDFSChecking(node, i); 
-      cfgTaintSet.explore = true; 
+      cfgInstSet.explore = true; 
       singlePath = true;
     } else {
       // explore back to the parent 
@@ -642,25 +653,25 @@ void CFGTree::exploreNodeCurrentBI(CFGNode *node, bool &singlePath,
         for (unsigned j = 0; j < parent->cfgNodes.size(); j++) {
           if (parent->cfgNodes[j]) {
             if (parent->cfgNodes[j] == tmp) {
-              if (existFlowSetConflict(cfgTaintSet.instSet, flowSet, 
+              if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
                                        parent->cfgInstSet[j].instSet,
                                        parent->cfgFlowSet[j], glAndsh)) {
                 //dumpNodeInstForDFSChecking(node, i); 
-                cfgTaintSet.explore = true;
+                cfgInstSet.explore = true;
                 singlePath = true;
               }
             } else {
-              if (exploreOneSideOfNode(cfgTaintSet, flowSet, 
+              if (exploreOneSideOfNode(cfgInstSet, flowSet, 
                                        parent->cfgNodes[j], glAndsh)) { 
-                cfgTaintSet.explore = true;
+                cfgInstSet.explore = true;
                 singlePath = true;
               } else {
-                if (existFlowSetConflict(cfgTaintSet.instSet, flowSet, 
+                if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
                                          parent->cfgInstSet[j].instSet,
                                          parent->cfgFlowSet[j], 
                                          glAndsh)) {
                   parent->cfgInstSet[j].explore = true;
-                  cfgTaintSet.explore = true;
+                  cfgInstSet.explore = true;
                   singlePath = true;
                 }
               }
@@ -669,9 +680,9 @@ void CFGTree::exploreNodeCurrentBI(CFGNode *node, bool &singlePath,
           if (singlePath) break;
         }
       } else {
-        if (existFlowSetConflict(cfgTaintSet.instSet, flowSet, 
+        if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
                                  preInstSet, preFlowSet, glAndsh)) {
-          cfgTaintSet.explore = true;
+          cfgInstSet.explore = true;
           singlePath = true;
         }
       }
@@ -685,31 +696,31 @@ void CFGTree::exploreNodeAcrossBI(CFGNode *node,
                                   bool &singlePath, 
                                   unsigned i, 
                                   bool glAndsh) {
-  CFGTaintSet &cfgTaintSet = node->cfgInstSet[i];
+  CFGInstSet &cfgInstSet = node->cfgInstSet[i];
   RelFlowSet &flowSet = node->cfgFlowSet[i];
 
   CFGNode *tmp = flowCurrent->parent;
 
   while (tmp != NULL) {
-    if (existFlowSetConflict(cfgTaintSet.instSet, flowSet, 
+    if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
                              tmp->succInstSet, 
                              tmp->succFlowSet, glAndsh)) {
-      cfgTaintSet.explore = true;
+      cfgInstSet.explore = true;
       singlePath = true;
     } else {
       for (unsigned i = 0; i < tmp->cfgNodes.size(); i++) {
         if (tmp->cfgNodes[i]) {
-          if (exploreOneSideOfNode(cfgTaintSet, flowSet, 
+          if (exploreOneSideOfNode(cfgInstSet, flowSet, 
                                    tmp->cfgNodes[i], glAndsh)) {
-            cfgTaintSet.explore = true;
+            cfgInstSet.explore = true;
             singlePath = true;
           } else {
-            if (existFlowSetConflict(cfgTaintSet.instSet, flowSet, 
+            if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
                                      tmp->cfgInstSet[i].instSet,
                                      tmp->cfgFlowSet[i], 
                                      glAndsh)) {
               tmp->cfgInstSet[i].explore = true;
-              cfgTaintSet.explore = true;
+              cfgInstSet.explore = true;
               singlePath = true;
             }
           }
@@ -719,9 +730,9 @@ void CFGTree::exploreNodeAcrossBI(CFGNode *node,
     tmp = tmp->parent;
   }
 
-  if (existFlowSetConflict(cfgTaintSet.instSet, flowSet, 
+  if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
                            preInstSet, preFlowSet, glAndsh)) {
-    cfgTaintSet.explore = true;
+    cfgInstSet.explore = true;
     singlePath = true;
   }
 }
