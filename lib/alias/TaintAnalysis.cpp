@@ -800,9 +800,9 @@ void TaintAnalysisCUDA::propagateValueInCFGTaintSet(Value *val,
     // check if inst will be affected by instruction in the exploredCFGInst
     for (set<CFGNode*>::iterator si = exploredCFGNodes.begin(); 
          si != exploredCFGNodes.end(); si++) {
-      std::cout << "CFGNode inst: " << std::endl;
-      (*si)->inst->dump();
       vector<CFGInstSet> &cfgInstSet = (*si)->cfgInstSet;
+      /*std::cout << "CFGNode inst: " << std::endl;
+      (*si)->inst->dump();
       for (unsigned i = 0; i < cfgInstSet.size(); i++) {
         std::cout << "Side " << i << ": " << std::endl;
         for (set<Instruction*>::iterator vi = cfgInstSet[i].instSet.begin();
@@ -811,7 +811,7 @@ void TaintAnalysisCUDA::propagateValueInCFGTaintSet(Value *val,
         }
       }
       std::cout << "Val: " << std::endl;
-      in->dump();
+      in->dump();*/
  
       for (unsigned i = 0; i < cfgInstSet.size(); i++) {
         if (!cfgInstSet[i].explore
@@ -876,8 +876,6 @@ void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst,
   bool shared_alias = false;
 
   // check cfgTree ... 
-  std::cout << "checking CFG Taint Set in handleGetElementPtrInst" 
-            << std::endl;
   propagateValueInCFGTaintSet(pointer, inst, false);
  
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
@@ -915,7 +913,6 @@ void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst,
   }
 
   if (device_alias || shared_alias) {
-    std::cout << "device_alias || shared_alias" << std::endl;
     checkGEPIIndex(inst, taintArgSet);
   }
 }

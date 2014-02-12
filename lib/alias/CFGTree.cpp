@@ -295,13 +295,13 @@ void CFGTree::insertCurInst(Instruction *inst,
     CFGInstSet &cfgInstSet = current->cfgInstSet[which];    
     cfgInstSet.instSet.insert(inst);
 
-    std::cout << "insertCurInst cfgInstSet which: " << which << " explored : " 
+    /*std::cout << "insertCurInst cfgInstSet which: " << which << " explored : " 
               << cfgInstSet.explore << ", the inst Set: " 
               << std::endl;
     for (std::set<Instruction*>::iterator si = cfgInstSet.instSet.begin();
          si != cfgInstSet.instSet.end(); si++) {
       (*si)->dump();
-   }
+    }*/
 
     // To determine if the pointer operand in the 'Load' instruction
     // conflicts with shared/global variable 
