@@ -203,18 +203,21 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
     }
 
     if (!cfgTree->inIteration()) {
-      // two branches are both possible 
-      // Find the nearest post dominator as the reconvergence point     
-      BasicBlock *postDom = ExecutorUtil::findNearestCommonPostDominator(inst, true); 
-      CFGNode *node = new CFGNode(inst, postDom, 
-                                  bi->getNumSuccessors(), true);
-      exploredCFGNodes.insert(node);
+      if (!cfgTree->enterIteration(inst, exploredBBSet)) {
+        // two branches are both possible 
+        // Find the nearest post dominator as the reconvergence point     
+        BasicBlock *postDom = ExecutorUtil::findNearestCommonPostDominator(inst, true); 
+        CFGNode *node = new CFGNode(inst, postDom, 
+                                    bi->getNumSuccessors(), true);
+        exploredCFGNodes.insert(node);
+        if (brTainted) node->tainted = true;
 
-      if (brTainted)
-        node->tainted = true;
-
-      cfgTree->insertNodeIntoCFGTree(node);
-      transferToBasicBlock(bi->getSuccessor(0));
+        cfgTree->insertNodeIntoCFGTree(node);
+        transferToBasicBlock(bi->getSuccessor(0));
+      } else {
+        cfgTree->exploreCFGUnderIteration(inst);
+        cfgTree->updateTaintInfoSet(taintArgSet);
+      }
     } else {
       cfgTree->exploreCFGUnderIteration(inst);
       CFGNode *current = cfgTree->getCurrentNode();
@@ -812,7 +815,7 @@ void TaintAnalysisCUDA::propagateValueInCFGTaintSet(Value *val,
       }
       std::cout << "Val: " << std::endl;
       in->dump();*/
- 
+      //std::cout << "propagateValueInCFGTaintSet size : " << cfgInstSet.size() << std::endl;
       for (unsigned i = 0; i < cfgInstSet.size(); i++) {
         if (!cfgInstSet[i].explore
              && (cfgInstSet[i].instSet.find(in) != cfgInstSet[i].instSet.end()
@@ -968,6 +971,8 @@ bool TaintAnalysisCUDA::executeInstruction(llvm::Instruction *inst,
     }
     case Instruction::Br: {
       handleBrInst(inst, taintArgSet);
+      BasicBlock *bb = inst->getParent();
+      exploredBBSet.insert(bb);
       blockChange = true;
       break;
     }
@@ -1199,8 +1204,8 @@ void TaintAnalysisCUDA::encounterSyncthreadsBarrier(Instruction *inst) {
 }
 
 void TaintAnalysisCUDA::insertInstToCFGTree(Instruction *inst,
-                                               vector<TaintArgInfo> &taintArgSet, 
-                                               AliasAnalysis &AA) {
+                                             vector<TaintArgInfo> &taintArgSet, 
+                                             AliasAnalysis &AA) {
   if (!cfgTree->inIteration()) {
     if (cfgTree->getCurrentNode()) {
       // insert the current instruction to 
@@ -1294,10 +1299,6 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
   // Start exploring the control-flow-graph (CFG)
   while (true) {
     Instruction *inst = curVFunc->getCurrentInst();
-    if (Verbose > 0) {
-      cout << "\nget current inst: " << endl;
-      inst->dump();
-    }
 
     if (!cfgTree->isCFGTreeFullyExplored()) {
       // To determine if the post-dominator 
@@ -1318,15 +1319,17 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
       }
     } 
 
+    if (Verbose > 0) {
+      cout << "\nexecute current inst: " << endl;
+      inst->dump();
+    }
+
     blockChange = executeInstruction(inst, taintArgSet, AA);
     // Insert the instruction into the CFG Node
     insertInstToCFGTree(inst, taintArgSet, AA);
     // When __syncthreads is encountered, update the 
     // CFG Tree to update the braches' exploration property 
     encounterSyncthreadsBarrier(inst);
-
-    BasicBlock *bb = inst->getParent();
-    exploredBBSet.insert(bb);
 
     if (!blockChange)
       curVFunc->stepInstruction();
@@ -1412,9 +1415,16 @@ bool TaintAnalysisCUDA::runOnFunction(llvm::Function &F) {
   curVFunc = vfunc;
   functions.push_back(vfunc);
   
-  // The entry for exploring kernels with "__global__"
+  if (Verbose > 0) {
+    // The entry for exploring kernels with "__global__"
+    TAINT_INFO2 << "Before exploredCUDAKernel: " << exploredCFGNodes.size()
+                << ", the kernel name : " << fName << endl;
+  }
+  exploredCFGNodes.clear();
+  exploredBBSet.clear();
+
   exploreCUDAKernel(&F, AA);
-  kernelSet.find(fName)->second = true;
+  kernelSet[fName] = true;
   
   if (allKernelsExplored(kernelSet)) {
     if (Verbose > 0) {

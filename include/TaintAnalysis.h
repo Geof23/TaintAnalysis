@@ -262,13 +262,12 @@ public:
   bool identifySuccessorRelation(BasicBlock *predBB, 
                                  BasicBlock *succBB); 
   bool enterIteration(Instruction *inst, 
-                      CFGNode *current, 
-                      std::set<BasicBlock*> &exploredBBSet, 
-                      bool blockChange);
+                      std::set<BasicBlock*> &exploredBBSet);
   void updateCurrentNode(Instruction *inst, 
                          bool &transfer);
   void setCFGNodeWithCauseIteration();
   void updateCurrentNodeAfterIteration();
+  void updateTaintInfoSet(std::vector<TaintArgInfo> &taintArgSet); 
   bool updateCFGTree(Instruction *inst, 
                      std::vector<TaintArgInfo> &taintArgSet, 
                      std::set<BasicBlock*> &exploredBBSet,

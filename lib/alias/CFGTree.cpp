@@ -81,6 +81,7 @@ void CFGTree::insertNodeIntoCFGTree(CFGNode *node) {
       node->parent = current;
     }
   }
+  // set the current as the newly inserted node
   current = node;
   if (syncthreadEncounter) {
     flowCurrent = node;
@@ -737,18 +738,6 @@ void CFGTree::exploreNodeAcrossBI(CFGNode *node,
   }
 }
 
-/*static bool transferToExploredBB(bool inIteration, 
-                                 bool blockChange,
-                                 BasicBlock *bb,
-                                 std::vector<TaintArgInfo> &taintArgSet) {
-  std::set<BasicBlock*> bbSet = taintArgSet[0].exploredBBSet;   
-
-  bool res = !inIteration 
-              && blockChange
-               && bbSet.find(bb) != bbSet.end();
-  return res;
-}*/ 
-
 bool CFGTree::foundSameBrInstFromCFGTree(Instruction *inst, 
                                          CFGNode *node) {
   bool found = false;
@@ -810,31 +799,19 @@ static bool brTransferToLoop(Instruction *inst) {
     std::string bbName = bb->getName().str();
 
     if (bbName.find("while") != std::string::npos
-        || bbName.find("for") != std::string::npos)
+        || bbName.find("for") != std::string::npos
+          || bbName.find("do") != std::string::npos)
       return true; 
   }
   return false;
 }
 
 bool CFGTree::enterIteration(Instruction *inst, 
-                             CFGNode *current,
-                             std::set<BasicBlock*> &exploredBBSet,
-                             bool blockChange) {
-  std::string brName = current->inst->getName().str();
-  if (!iterateCFGNode && blockChange) {
-    if (brTransferToLoop(current->inst)) {
-      BasicBlock *instBB = inst->getParent();
-      BasicBlock *curNodeBB = current->inst->getParent();
-    
-      if (instBB == curNodeBB)
-        return true;
-      else {
-        if (exploredBBSet.find(instBB) != exploredBBSet.end()) 
-          return identifySuccessorRelation(instBB, curNodeBB); 
-        else 
-          return false;
-      }
-    }
+                             std::set<BasicBlock*> &exploredBBSet) {
+  if (!iterateCFGNode 
+       && brTransferToLoop(inst)) {
+    BasicBlock *instBB = inst->getParent();
+    return exploredBBSet.find(instBB) != exploredBBSet.end();
   }
   return false;
 }
@@ -900,62 +877,59 @@ void CFGTree::updateCurrentNodeAfterIteration() {
     std::cout << "Jump out from the loop!" << std::endl;
 }
 
+void CFGTree::updateTaintInfoSet(std::vector<TaintArgInfo> &taintArgSet) {
+  if (!iterateCFGNode) {
+    taintInfoSet = taintArgSet;
+    iterateCFGNode = current;
+  }
+}
+
 bool CFGTree::updateCFGTree(Instruction *inst, 
                             std::vector<TaintArgInfo> &taintArgSet, 
                             std::set<BasicBlock*> &exploredBBSet, 
                             bool blockChange, bool &finishIteration) {
   bool transfer = false;
-  if (enterIteration(inst, current, exploredBBSet, blockChange)) {
-    if (Verbose > 0) {
-      // iterate back for a loop  
-      std::cout << "iterate back, which: " 
-                << current->which << std::endl;
-      current->inst->dump();
-    }
-    if (!iterateCFGNode) {
-      taintInfoSet = taintArgSet;
-      iterateCFGNode = current;
-    } 
-  } else {
-    if (iterateCFGNode) {
-      if (isTwoInstIdentical(inst, iterateCFGNode->inst)) {
-        current = iterateCFGNode;
 
-        if (checkTwoTaintArgSetSame(taintInfoSet, taintArgSet)) {
-          if (Verbose > 0) {
-            std::cout << "set the iteration br: " 
-                      << std::endl;
-            current->inst->dump();
-          }
-          iterateCFGNode->causeIteration = true;
-          iterateCFGNode->outOfIteration = current->which;
-          current->which++;
-          if (current->which == current->cfgNodes.size()) {
-            current->allFinish = true;
-            updateCurrentNodeAfterIteration();
-            finishIteration = true;
-          } 
-          transfer = true;
-          iterateCFGNode = NULL;
-        } else {
-          taintInfoSet = taintArgSet;
+  if (iterateCFGNode) {
+    if (isTwoInstIdentical(inst, iterateCFGNode->inst)) {
+      current = iterateCFGNode;
+
+      if (checkTwoTaintArgSetSame(taintInfoSet, taintArgSet)) {
+        if (Verbose > 0) {
+          std::cout << "set the iteration br: " 
+                    << std::endl;
+          current->inst->dump();
         }
-      } else {
-        //std::cout << "current inst: " << std::endl;
-        //current->inst->dump();
-        if (inst->getOpcode() == Instruction::Br
-             && current->causeIteration) {
-          //std::cout << "outOfIteration == 1" << std::endl;
-          current->which = current->cfgNodes.size();
+
+        iterateCFGNode->causeIteration = true;
+        iterateCFGNode->outOfIteration = current->which;
+        current->which++;
+        if (current->which == current->cfgNodes.size()) {
           current->allFinish = true;
-          updateCurrentNodeAfterIteration(); 
+          updateCurrentNodeAfterIteration();
           finishIteration = true;
-          transfer = true;
-        }
+        } 
+        transfer = true;
+           
+        iterateCFGNode = NULL;
+      } else {
+        taintInfoSet = taintArgSet;
+      }
+    } else {
+      //std::cout << "current inst: " << std::endl;
+      //current->inst->dump();
+      if (inst->getOpcode() == Instruction::Br
+           && current->causeIteration) {
+        //std::cout << "outOfIteration == 1" << std::endl;
+        current->which = current->cfgNodes.size();
+        current->allFinish = true;
+        updateCurrentNodeAfterIteration(); 
+        finishIteration = true;
+        transfer = true;
       }
     }
-    updateCurrentNode(inst, transfer); 
   }
+  updateCurrentNode(inst, transfer); 
 
   return transfer;
 }
