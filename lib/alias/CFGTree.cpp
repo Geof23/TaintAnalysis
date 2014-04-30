@@ -2,6 +2,8 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
 #include "TaintAnalysis.h"
+#include <iostream>
+#include <fstream>
 
 namespace runtime {
   extern cl::opt<bool> Verbose;
@@ -9,6 +11,41 @@ namespace runtime {
 
 using namespace taint;
 using namespace runtime;
+
+static void extractInstFromSourceCode(MDNode *N) {
+  DILocation Loc(N);               // DILocation is in DebugInfo.h
+  unsigned Line = Loc.getLineNumber();
+  StringRef File = Loc.getFilename();
+  StringRef Dir = Loc.getDirectory();
+  std::cout << "Instruction Line: " << Line << ", In File: "
+            << File.str() << ", With Dir Path: " << Dir.str()
+            << std::endl;
+
+  std::string filePath = Dir.str() + "/" + File.str();
+  std::ifstream src(filePath.data(), std::ifstream::in);
+  if (src.is_open()) {
+    unsigned num = 0;
+    std::string cLine;
+    do {
+      getline(src, cLine);
+      num++;
+    } while (num != Line);
+
+    std::cout << "[File: " << filePath << ", Line: " << Line
+              << ", Inst: " << cLine << "]" << std::endl;
+  } else {
+    std::cout << "Can not open file!" << std::endl;
+  }
+}
+
+static void dumpBrInstForTesting(CFGNode *node) {
+  Instruction *inst = node->inst;
+  if (MDNode *N = inst->getMetadata("dbg")) {  
+    // Here I is an LLVM instruction
+    extractInstFromSourceCode(N);
+    inst->dump();
+  } 
+}
 
 CFGTree::CFGTree() {
   root = current = flowCurrent = iterateCFGNode = NULL;
@@ -180,6 +217,7 @@ void ExecutorUtil::checkLoadInst(Instruction *inst,
         std::cout << "shared load inst: " << std::endl;
         inst->dump();
       }
+      std::cout << "push back the shared here" << std::endl;
       flowSet.sharedReadVec.push_back(RelValue(inst, sharedSet[i].gv));
       relToShared = true;
       break;
@@ -221,6 +259,7 @@ void ExecutorUtil::checkStoreInst(Instruction *inst,
         std::cout << "shared store inst: " << std::endl;
         inst->dump();
       }
+      std::cout << "pushback to shared store " << std::endl;
       flowSet.sharedWriteVec.push_back(RelValue(inst, sharedSet[i].gv));
       relToShared = true;
       break;
@@ -294,9 +333,11 @@ void CFGTree::insertCurInst(Instruction *inst,
   if (!current->allFinish) {
     unsigned which = current->which;
     CFGInstSet &cfgInstSet = current->cfgInstSet[which];    
+    std::cout << "insert the inst " << std::endl;
     cfgInstSet.instSet.insert(inst);
 
-    /*std::cout << "insertCurInst cfgInstSet which: " << which << " explored : " 
+    /*
+    std::cout << "insertCurInst cfgInstSet which: " << which << " explored : " 
               << cfgInstSet.explore << ", the inst Set: " 
               << std::endl;
     for (std::set<Instruction*>::iterator si = cfgInstSet.instSet.begin();
@@ -306,15 +347,21 @@ void CFGTree::insertCurInst(Instruction *inst,
 
     // To determine if the pointer operand in the 'Load' instruction
     // conflicts with shared/global variable 
-    if (inst->getOpcode() == Instruction::Load)
+    if (inst->getOpcode() == Instruction::Load) {
+      std::cout << "load inst: " << std::endl;
+      inst->dump();
       ExecutorUtil::checkLoadInst(inst, glSet, sharedSet, 
                                   AA, current->cfgFlowSet[which]);
+    }
 
     // To determine if the pointer operand in the 'Store' instruction
     // conflicts with shared/global variable 
-    if (inst->getOpcode() == Instruction::Store)
+    if (inst->getOpcode() == Instruction::Store) {
+      std::cout << "store inst: " << std::endl;
+      inst->dump();
       ExecutorUtil::checkStoreInst(inst, glSet, sharedSet, 
                                    AA, current->cfgFlowSet[which]);
+    }
 
     std::string instName = inst->getName().str();
     if (instName.find("Atomic") != std::string::npos) {
@@ -322,7 +369,7 @@ void CFGTree::insertCurInst(Instruction *inst,
                                     AA, current->cfgFlowSet[which]);
     }
   } else {
-    std::set<Instruction*> &instSet = current->succInstSet;
+    std::set<Instruction*> &instSet = current->succInstSet.instSet;
     instSet.insert(inst);
 
     if (inst->getOpcode() == Instruction::Load)
@@ -335,127 +382,6 @@ void CFGTree::insertCurInst(Instruction *inst,
   }
 }
 
-static bool checkGlobalFlowSet(RelFlowSet &flowSet1, RelFlowSet &flowSet2) {
-  bool check = false;
-
-  if (!flowSet1.globalReadVec.empty()
-       && !flowSet2.globalWriteVec.empty()) {
-    for (unsigned i = 0; i < flowSet1.globalReadVec.size(); i++) {
-      for (unsigned j = 0; j < flowSet2.globalWriteVec.size(); j++) {
-        if (flowSet1.globalReadVec[i].relVal 
-             == flowSet2.globalWriteVec[j].relVal) {
-          check = true; 
-          break;
-        }
-      }
-      if (check) break;
-    }
-  }
-
-  if (!flowSet1.globalWriteVec.empty()
-       && !flowSet2.globalReadVec.empty()) {
-    for (unsigned i = 0; i < flowSet1.globalWriteVec.size(); i++) {
-      for (unsigned j = 0; j < flowSet2.globalReadVec.size(); j++) {
-        if (flowSet1.globalWriteVec[i].relVal 
-             == flowSet2.globalReadVec[j].relVal) {
-          check = true; 
-          break;
-        }
-      }
-      if (check) break;
-    }
-  }
-
-  if (!flowSet1.globalWriteVec.empty()
-       && !flowSet2.globalWriteVec.empty()) {
-    for (unsigned i = 0; i < flowSet1.globalWriteVec.size(); i++) {
-      for (unsigned j = 0; j < flowSet2.globalWriteVec.size(); j++) {
-        if (flowSet1.globalWriteVec[i].relVal 
-             == flowSet2.globalWriteVec[j].relVal) {
-          check = true; 
-          break;
-        }
-      }
-      if (check) break;
-    }
-  }
-
-  return check;
-}
-
-static bool checkSharedFlowSet(RelFlowSet &flowSet1, RelFlowSet &flowSet2) {
-  bool check = false;
-
-  if (!flowSet1.sharedReadVec.empty()
-       && !flowSet2.sharedWriteVec.empty()) {
-    for (unsigned i = 0; i < flowSet1.sharedReadVec.size(); i++) {
-      for (unsigned j = 0; j < flowSet2.sharedWriteVec.size(); j++) {
-        if (flowSet1.sharedReadVec[i].relVal 
-             == flowSet2.sharedWriteVec[j].relVal) {
-          check = true; 
-          break;
-        }
-      }
-      if (check) break;
-    }
-  }
-
-  if (!flowSet1.sharedWriteVec.empty()
-       && !flowSet2.sharedReadVec.empty()) {
-    for (unsigned i = 0; i < flowSet1.sharedWriteVec.size(); i++) {
-      for (unsigned j = 0; j < flowSet2.sharedReadVec.size(); j++) {
-        if (flowSet1.sharedWriteVec[i].relVal 
-             == flowSet2.sharedReadVec[j].relVal) {
-          check = true; 
-          break;
-        }
-      }
-      if (check) break;
-    }
-  }
-
-  if (!flowSet1.sharedWriteVec.empty()
-       && !flowSet2.sharedWriteVec.empty()) {
-    for (unsigned i = 0; i < flowSet1.sharedWriteVec.size(); i++) {
-      for (unsigned j = 0; j < flowSet2.sharedWriteVec.size(); j++) {
-        if (flowSet1.sharedWriteVec[i].relVal 
-             == flowSet2.sharedWriteVec[j].relVal) {
-          check = true; 
-          break;
-        }
-      }
-      if (check) break;
-    }
-  }
-
-  return check;
-}
-
-static bool existFlowSetConflict(std::set<Instruction*> &instSet1, 
-                                 RelFlowSet &flowSet1, 
-                                 std::set<Instruction*> &instSet2, 
-                                 RelFlowSet &flowSet2, 
-                                 bool glAndsh) {
-  if (instSet1.empty())
-    return false;
-  else {
-    // check flowSet1 and flowSet2
-    if (flowSet1.empty())
-      return false; 
-    else {
-      bool conflict = false;
-      if (glAndsh) {
-        conflict = checkGlobalFlowSet(flowSet1, flowSet2)
-                     || checkSharedFlowSet(flowSet1, flowSet2);
-      } else {
-        conflict = checkGlobalFlowSet(flowSet1, flowSet2);
-      }
-
-      return conflict;
-    }
-  }
-}
-
 void CFGTree::dumpNodeInstForDFSChecking(CFGNode *node, 
                                          unsigned i) {
   std::cout << "set here in startDFSChecking, i: " 
@@ -463,38 +389,22 @@ void CFGTree::dumpNodeInstForDFSChecking(CFGNode *node,
   node->inst->dump();
 }
 
-// include the shared/global race checking within 
-// the current BI 
-bool CFGTree::startDFSCheckingForCurrentBI(CFGNode *node) {
-  bool keepPath = false;
-
+// detect if the potential shared/global race 
+// exist within the current BI or across different BIs 
+/*void CFGTree::startDFSCheckingForCurrentBI(CFGNode *node) {
   if (node != NULL) {
-    std::vector<CFGNode*> &treeNodes = node->cfgNodes;
-    std::vector<CFGInstSet> &cfgInstSet = node->cfgInstSet;
- 
-    for (unsigned i = 0; i < treeNodes.size(); i++) {
-      if (!cfgInstSet[i].explore) {
-        bool singlePath = startDFSCheckingForCurrentBI(treeNodes[i]);
+    std::cout << "startDFSChecking here : " << std::endl;
+    dumpBrInstForTesting(node); 
 
-        if (!singlePath) {
-          exploreNodeCurrentBI(node, singlePath, i, true);
-          exploreNodeAcrossBI(node, singlePath, i, false);
-        }
-        else 
-          cfgInstSet[i].explore = true;  
-          
-        keepPath = keepPath || singlePath; 
-      } else {
-        keepPath = true;
-      }
+    bool explore = false;
+    for (unsigned i = 0; i < treeNodes.size(); i++) {
+      startDFSCheckingForCurrentBI(treeNodes[i]);
     }
 
     // explore node's successor
     startDFSCheckingForCurrentBI(node->successor); 
   }
-
-  return keepPath;
-}
+}*/
 
 static void updateTaintNodeStr(CFGNode *node, std::string &str) {
   std::string tmp = "br-";
@@ -555,6 +465,10 @@ static void annotateFunctionIR(LLVMContext &glContext,
           if (node->cfgInstSet[i].explore) {
             //std::cout << "branch " << i << ", explore! " << std::endl;
             str += "true";
+            if (node->cfgInstSet[i].global)
+              str += "-G";
+            if (node->cfgInstSet[i].shared)
+              str += "-S";
           } else {
             //std::cout << "branch " << i << ", not explore! " << std::endl;
             str += "false";
@@ -568,6 +482,12 @@ static void annotateFunctionIR(LLVMContext &glContext,
           //std::cout << "causeIteration br: " << std::endl;
           //node->inst->dump();
           str += "-ite";
+          /*if (node->tainted) {
+            std::cout << "The tainted br inst: " << std::endl;
+            for (std::set<Instruction*>::iterator si = node->taintSet.begin();
+                 si != node->taintSet.end(); si++)
+              (*si)->dump();
+          }*/
         }
 
         updateTaintNodeStr(node, str);
@@ -603,139 +523,6 @@ void CFGTree::exploreCFGTreeToAnnotate(LLVMContext &glContext,
 void CFGTree::setSyncthreadEncounter() {
   syncthreadEncounter = true;
   flowCurrent = NULL;
-}
-
-bool CFGTree::exploreOneSideOfNode(CFGInstSet &cfgInstSet, 
-                                   RelFlowSet &relFlowSet, 
-                                   CFGNode *node, bool glAndsh) {
-  bool conflictFound = false;
-  if (node) {
-    for (unsigned i = 0; i < node->cfgNodes.size(); i++) {
-      conflictFound = exploreOneSideOfNode(cfgInstSet, relFlowSet,
-                                           node->cfgNodes[i], glAndsh);
-      if (!conflictFound) {
-        conflictFound = existFlowSetConflict(cfgInstSet.instSet, 
-                                             relFlowSet, 
-                                             node->cfgInstSet[i].instSet, 
-                                             node->cfgFlowSet[i], 
-                                             glAndsh); 
-        if (conflictFound) { 
-          cfgInstSet.explore = true;
-          node->cfgInstSet[i].explore = true;
-        }
-      } else {
-        cfgInstSet.explore = true;
-        node->cfgInstSet[i].explore = true;
-      }
-    }
-  }
-  return conflictFound;
-}
-
-// Check the ith path of "node"
-void CFGTree::exploreNodeCurrentBI(CFGNode *node, bool &singlePath, 
-                                   unsigned i, bool glAndsh) {
-  CFGInstSet &cfgInstSet = node->cfgInstSet[i];
-  RelFlowSet &flowSet = node->cfgFlowSet[i];
-
-  CFGNode *tmp = node;
-  do {
-    // check the successor 
-    if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
-                             tmp->succInstSet, 
-                             tmp->succFlowSet, glAndsh)) {
-      //dumpNodeInstForDFSChecking(node, i); 
-      cfgInstSet.explore = true; 
-      singlePath = true;
-    } else {
-      // explore back to the parent 
-      CFGNode *parent = tmp->parent;
-      if (parent) {
-        for (unsigned j = 0; j < parent->cfgNodes.size(); j++) {
-          if (parent->cfgNodes[j]) {
-            if (parent->cfgNodes[j] == tmp) {
-              if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
-                                       parent->cfgInstSet[j].instSet,
-                                       parent->cfgFlowSet[j], glAndsh)) {
-                //dumpNodeInstForDFSChecking(node, i); 
-                cfgInstSet.explore = true;
-                singlePath = true;
-              }
-            } else {
-              if (exploreOneSideOfNode(cfgInstSet, flowSet, 
-                                       parent->cfgNodes[j], glAndsh)) { 
-                cfgInstSet.explore = true;
-                singlePath = true;
-              } else {
-                if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
-                                         parent->cfgInstSet[j].instSet,
-                                         parent->cfgFlowSet[j], 
-                                         glAndsh)) {
-                  parent->cfgInstSet[j].explore = true;
-                  cfgInstSet.explore = true;
-                  singlePath = true;
-                }
-              }
-            }
-          }
-          if (singlePath) break;
-        }
-      } else {
-        if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
-                                 preInstSet, preFlowSet, glAndsh)) {
-          cfgInstSet.explore = true;
-          singlePath = true;
-        }
-      }
-    }
-    tmp = tmp->parent;
-
-  } while (tmp != NULL && tmp != flowCurrent->parent); 
-}
-
-void CFGTree::exploreNodeAcrossBI(CFGNode *node, 
-                                  bool &singlePath, 
-                                  unsigned i, 
-                                  bool glAndsh) {
-  CFGInstSet &cfgInstSet = node->cfgInstSet[i];
-  RelFlowSet &flowSet = node->cfgFlowSet[i];
-
-  CFGNode *tmp = flowCurrent->parent;
-
-  while (tmp != NULL) {
-    if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
-                             tmp->succInstSet, 
-                             tmp->succFlowSet, glAndsh)) {
-      cfgInstSet.explore = true;
-      singlePath = true;
-    } else {
-      for (unsigned i = 0; i < tmp->cfgNodes.size(); i++) {
-        if (tmp->cfgNodes[i]) {
-          if (exploreOneSideOfNode(cfgInstSet, flowSet, 
-                                   tmp->cfgNodes[i], glAndsh)) {
-            cfgInstSet.explore = true;
-            singlePath = true;
-          } else {
-            if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
-                                     tmp->cfgInstSet[i].instSet,
-                                     tmp->cfgFlowSet[i], 
-                                     glAndsh)) {
-              tmp->cfgInstSet[i].explore = true;
-              cfgInstSet.explore = true;
-              singlePath = true;
-            }
-          }
-        }
-      }
-    }
-    tmp = tmp->parent;
-  }
-
-  if (existFlowSetConflict(cfgInstSet.instSet, flowSet, 
-                           preInstSet, preFlowSet, glAndsh)) {
-    cfgInstSet.explore = true;
-    singlePath = true;
-  }
 }
 
 bool CFGTree::foundSameBrInstFromCFGTree(Instruction *inst, 

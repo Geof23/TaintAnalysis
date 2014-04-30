@@ -76,12 +76,18 @@ public:
   // because this branch potentially will influence 
   // the race checking 
   bool explore;
+  bool global;
+  bool shared;
   std::set<Instruction*> instSet;
   std::set<Value*> propSet;
 
-  explicit CFGInstSet() : explore(false) {}
+  explicit CFGInstSet() : explore(false), 
+                          global(false), 
+                          shared(false) {}
 
   CFGInstSet(const CFGInstSet &taintSet) : explore(taintSet.explore), 
+                                           global(taintSet.global),
+                                           shared(taintSet.shared),
                                            instSet(taintSet.instSet), 
                                            propSet(taintSet.propSet) {}
 
@@ -103,12 +109,13 @@ public:
   bool allFinish;
   bool tainted;
 
+  std::set<Instruction*> taintSet;
   std::vector<CFGNode*> cfgNodes;
   std::vector<CFGInstSet> cfgInstSet;
   std::vector<RelFlowSet> cfgFlowSet;
 
   CFGNode *successor;
-  std::set<Instruction*> succInstSet;
+  CFGInstSet succInstSet;
   RelFlowSet succFlowSet;
 
   explicit CFGNode(Instruction *_inst, 
@@ -216,7 +223,7 @@ public:
 
 class CFGTree {
 public: 
-  std::set<Instruction*> preInstSet;
+  CFGInstSet preInstSet;
   RelFlowSet preFlowSet;
 
   CFGTree(); 
@@ -240,20 +247,9 @@ public:
                      std::vector<GlobalSharedTaint> &glSet,
                      std::vector<GlobalSharedTaint> &sharedSet);
   void setSyncthreadEncounter();
-  bool exploreOneSideOfNode(CFGInstSet &cfgInstSet, 
-                            RelFlowSet &relFlowSet, 
-                            CFGNode *node, bool glAndsh);
-  void exploreNodeCurrentBI(CFGNode *node, 
-                            bool &singlePath, 
-                            unsigned i, 
-                            bool glAndsh); 
-  void exploreNodeAcrossBI(CFGNode *node, 
-                           bool &singlePath, 
-                           unsigned i, 
-                           bool glAndsh);
   void dumpNodeInstForDFSChecking(CFGNode *node, 
                                   unsigned i); 
-  bool startDFSCheckingForCurrentBI(CFGNode *node); 
+  void startDFSCheckingForCurrentBI(CFGNode *node); 
   void exploreCFGTreeToAnnotate(LLVMContext &glContext, 
                                 Function *f, 
                                 CFGNode *node);
@@ -357,9 +353,11 @@ public:
                        AliasAnalysis &AA);
   void propagateValueInCFGTaintSet(Value* val, 
                                    Instruction *inst, 
-                                   bool sSink);
+                                   bool sSink, 
+                                   bool shared = false);
   void checkGEPIIndex(Instruction *inst, 
-                      std::vector<TaintArgInfo> &argSet);
+                      std::vector<TaintArgInfo> &argSet, 
+                      bool global);
   void handleGetElementPtrInst(Instruction *inst, 
                                std::vector<TaintArgInfo> &argSet, 
                                AliasAnalysis &AA);

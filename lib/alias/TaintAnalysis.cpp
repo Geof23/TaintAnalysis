@@ -176,6 +176,7 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
   } else {
     Value *cond = bi->getCondition();
     bool brTainted = false;
+    set<Instruction*> taintSet;
 
     for (unsigned i = 0; i < taintArgSet.size(); i++) {
       //ExecutorUtil::dumpTaintInstList(taintArgSet[i].taintInstList);
@@ -187,10 +188,11 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
         taintArgSet[i].taintInstList.insert(inst);   
         taintArgSet[i].taint = true;
         brTainted = true;
+        taintSet = taintArgSet[i].taintInstList;
         if (Verbose > 0) {
           TAINT_INFO2 << "The Br instruction is tainted w.r.t. the argument: " 
                       << taintArgSet[i].arg->getName().str()
-                      << endl;
+                      << std::endl;
         } else {
           ofstream file("summary.txt", ios::app);
           if (file.is_open()) {
@@ -210,9 +212,13 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
         CFGNode *node = new CFGNode(inst, postDom, 
                                     bi->getNumSuccessors(), true);
         exploredCFGNodes.insert(node);
-        if (brTainted) node->tainted = true;
-
+        if (brTainted) {
+          node->tainted = true;
+          node->taintSet = taintSet; 
+        }
         cfgTree->insertNodeIntoCFGTree(node);
+        std::cout << "insert node into CFGTree: " << std::endl;
+        node->inst->dump();
         transferToBasicBlock(bi->getSuccessor(0));
       } else {
         cfgTree->exploreCFGUnderIteration(inst);
@@ -798,7 +804,8 @@ void TaintAnalysisCUDA::handleStoreInst(Instruction *inst,
 
 void TaintAnalysisCUDA::propagateValueInCFGTaintSet(Value *val, 
                                                     Instruction *inst,
-                                                    bool sSink) {
+                                                    bool sSink, 
+                                                    bool shared) {
   if (Instruction *in = dyn_cast<Instruction>(val)) {
     // check if inst will be affected by instruction in the exploredCFGInst
     for (set<CFGNode*>::iterator si = exploredCFGNodes.begin(); 
@@ -819,19 +826,21 @@ void TaintAnalysisCUDA::propagateValueInCFGTaintSet(Value *val,
       for (unsigned i = 0; i < cfgInstSet.size(); i++) {
         if (!cfgInstSet[i].explore
              && (cfgInstSet[i].instSet.find(in) != cfgInstSet[i].instSet.end()
-                  || cfgInstSet[i].propSet.find(val) != cfgInstSet[i].propSet.end())) {
-          // inst will be inserted into the taintSet of this branch,
-          // that is, the instruction in the taintSet will be propagated 
-          // to the current inst.
+                 || cfgInstSet[i].propSet.find(val) != cfgInstSet[i].propSet.end())) {
+          // inst is inserted into the instSet of this branch,
           cfgInstSet[i].instSet.insert(inst);
           if (sSink) {
             if (Verbose > 0) {
               // explore is set true, and update the CFGTree 
+              cout << "Current node inst, shared " << shared << endl;
+              (*si)->inst->dump();
               cout << "The instruction used in the sensitive sinks: " 
                    << endl;
               inst->dump();
             }
             cfgInstSet[i].explore = true;
+            if (shared) cfgInstSet[i].shared = true;
+            else cfgInstSet[i].global = true;
           }
         }
       }
@@ -840,7 +849,8 @@ void TaintAnalysisCUDA::propagateValueInCFGTaintSet(Value *val,
 }
 
 void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst, 
-                                       vector<TaintArgInfo> &taintArgSet) {
+                                       vector<TaintArgInfo> &taintArgSet, 
+                                       bool shared) {
   GetElementPtrInst *gepi = dyn_cast<GetElementPtrInst>(inst);
 
   // To test other arguments are tainted or not  
@@ -866,7 +876,7 @@ void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst,
       }
     }
 
-    propagateValueInCFGTaintSet(element, inst, true);
+    propagateValueInCFGTaintSet(element, inst, true, shared);
   }
 }
 
@@ -916,7 +926,10 @@ void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst,
   }
 
   if (device_alias || shared_alias) {
-    checkGEPIIndex(inst, taintArgSet);
+    if (shared_alias)
+      checkGEPIIndex(inst, taintArgSet, true);
+    else 
+      checkGEPIIndex(inst, taintArgSet, false);
   }
 }
 
@@ -986,7 +999,6 @@ bool TaintAnalysisCUDA::executeInstruction(llvm::Instruction *inst,
       CallSite cs(inst);
       Value *fp = cs.getCalledValue();
       Function *f = getTargetFunction(fp);
-      string fName = f->getName().str();
       if (f) {
         if (!f->isDeclaration()) {
           // Non-declaration 
@@ -1187,16 +1199,20 @@ void TaintAnalysisCUDA::encounterSyncthreadsBarrier(Instruction *inst) {
           CallSite cs(inst);
           Value *fp = cs.getCalledValue();
           Function *f = getTargetFunction(fp);
-          string fName = f->getName().str();
-          if (fName.find("__syncthreads") != string::npos) {
-            // start checking  
-            CFGNode *flowCurrent = cfgTree->getFlowCurrentNode();
-            cfgTree->startDFSCheckingForCurrentBI(flowCurrent);
-            cfgTree->setSyncthreadEncounter();
+          if (f) {
+            string fName = f->getName().str();
+            if (fName.find("__syncthreads") != string::npos) {
+              // start checking  
+              CFGNode *flowCurrent = cfgTree->getFlowCurrentNode();
+              std::cout << "flow current inst: " << std::endl;
+              flowCurrent->inst->dump();
+              //cfgTree->startDFSCheckingForCurrentBI(flowCurrent);
+              cfgTree->setSyncthreadEncounter();
+            }
           }
         } else {
           CFGNode *flowCurrent = cfgTree->getFlowCurrentNode();
-          cfgTree->startDFSCheckingForCurrentBI(flowCurrent);
+          //cfgTree->startDFSCheckingForCurrentBI(flowCurrent);
         }
       }
     }
@@ -1204,8 +1220,8 @@ void TaintAnalysisCUDA::encounterSyncthreadsBarrier(Instruction *inst) {
 }
 
 void TaintAnalysisCUDA::insertInstToCFGTree(Instruction *inst,
-                                             vector<TaintArgInfo> &taintArgSet, 
-                                             AliasAnalysis &AA) {
+                                            vector<TaintArgInfo> &taintArgSet, 
+                                            AliasAnalysis &AA) {
   if (!cfgTree->inIteration()) {
     if (cfgTree->getCurrentNode()) {
       // insert the current instruction to 
@@ -1213,7 +1229,7 @@ void TaintAnalysisCUDA::insertInstToCFGTree(Instruction *inst,
       cfgTree->insertCurInst(inst, taintArgSet, 
                              AA, glSet, sharedSet);
     } else {
-      cfgTree->preInstSet.insert(inst);
+      cfgTree->preInstSet.instSet.insert(inst);
 
       if (inst->getOpcode() == Instruction::Load) 
         ExecutorUtil::checkLoadInst(inst, glSet, sharedSet, 
