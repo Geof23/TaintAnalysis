@@ -104,6 +104,7 @@ public:
   bool isBrCond;
   bool causeIteration;
   unsigned outOfIteration;
+  int BINum;
   unsigned which; // which path is being explored   
   CFGNode *parent;
   bool allFinish;
@@ -127,6 +128,7 @@ public:
     which = 0;
     parent = NULL;
     causeIteration = false;
+    BINum = -1;
     allFinish = false;
     tainted = false;
     for (unsigned i = 0; i < numSuccessors; i++) {
@@ -221,6 +223,20 @@ public:
   }
 };
 
+struct CombineResult {
+  bool explore;
+  bool global;
+  bool shared;
+
+  CombineResult() : explore(false), 
+                    global(false), 
+                    shared(false) {}
+
+  CombineResult(const CombineResult &result) : explore(result.explore), 
+                                               global(result.global), 
+                                               shared(result.shared) {}
+};
+
 class CFGTree {
 public: 
   CFGInstSet preInstSet;
@@ -249,7 +265,7 @@ public:
   void setSyncthreadEncounter();
   void dumpNodeInstForDFSChecking(CFGNode *node, 
                                   unsigned i); 
-  void startDFSCheckingForCurrentBI(CFGNode *node); 
+  CombineResult startDFSCheckingForCurrentBI(CFGNode *node); 
   void exploreCFGTreeToAnnotate(LLVMContext &glContext, 
                                 Function *f, 
                                 CFGNode *node);

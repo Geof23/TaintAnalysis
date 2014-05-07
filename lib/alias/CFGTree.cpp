@@ -217,7 +217,6 @@ void ExecutorUtil::checkLoadInst(Instruction *inst,
         std::cout << "shared load inst: " << std::endl;
         inst->dump();
       }
-      std::cout << "push back the shared here" << std::endl;
       flowSet.sharedReadVec.push_back(RelValue(inst, sharedSet[i].gv));
       relToShared = true;
       break;
@@ -259,7 +258,6 @@ void ExecutorUtil::checkStoreInst(Instruction *inst,
         std::cout << "shared store inst: " << std::endl;
         inst->dump();
       }
-      std::cout << "pushback to shared store " << std::endl;
       flowSet.sharedWriteVec.push_back(RelValue(inst, sharedSet[i].gv));
       relToShared = true;
       break;
@@ -333,7 +331,6 @@ void CFGTree::insertCurInst(Instruction *inst,
   if (!current->allFinish) {
     unsigned which = current->which;
     CFGInstSet &cfgInstSet = current->cfgInstSet[which];    
-    std::cout << "insert the inst " << std::endl;
     cfgInstSet.instSet.insert(inst);
 
     /*
@@ -348,8 +345,10 @@ void CFGTree::insertCurInst(Instruction *inst,
     // To determine if the pointer operand in the 'Load' instruction
     // conflicts with shared/global variable 
     if (inst->getOpcode() == Instruction::Load) {
-      std::cout << "load inst: " << std::endl;
-      inst->dump();
+      if (Verbose > 0) {
+        std::cout << "load inst: " << std::endl;
+        inst->dump();
+      }
       ExecutorUtil::checkLoadInst(inst, glSet, sharedSet, 
                                   AA, current->cfgFlowSet[which]);
     }
@@ -357,8 +356,10 @@ void CFGTree::insertCurInst(Instruction *inst,
     // To determine if the pointer operand in the 'Store' instruction
     // conflicts with shared/global variable 
     if (inst->getOpcode() == Instruction::Store) {
-      std::cout << "store inst: " << std::endl;
-      inst->dump();
+      if (Verbose > 0) {
+        std::cout << "store inst: " << std::endl;
+        inst->dump();
+      }
       ExecutorUtil::checkStoreInst(inst, glSet, sharedSet, 
                                    AA, current->cfgFlowSet[which]);
     }
@@ -391,61 +392,59 @@ void CFGTree::dumpNodeInstForDFSChecking(CFGNode *node,
 
 // detect if the potential shared/global race 
 // exist within the current BI or across different BIs 
-/*void CFGTree::startDFSCheckingForCurrentBI(CFGNode *node) {
+CombineResult CFGTree::startDFSCheckingForCurrentBI(CFGNode *node) {
+  CombineResult result;
+
   if (node != NULL) {
-    std::cout << "startDFSChecking here : " << std::endl;
-    dumpBrInstForTesting(node); 
+    for (unsigned i = 0; i < node->cfgNodes.size(); i++) {
+      if (node->cfgInstSet[i].explore == false) { 
+        CombineResult res = startDFSCheckingForCurrentBI(node->cfgNodes[i]); 
+        if (res.explore) {
+          result.explore = true;
+          node->cfgInstSet[i].explore = true;
 
-    bool explore = false;
-    for (unsigned i = 0; i < treeNodes.size(); i++) {
-      startDFSCheckingForCurrentBI(treeNodes[i]);
-    }
-
-    // explore node's successor
-    startDFSCheckingForCurrentBI(node->successor); 
-  }
-}*/
-
-static void updateTaintNodeStr(CFGNode *node, std::string &str) {
-  std::string tmp = "br-";
-  bool set = false;
-  if (node->tainted 
-       && str.find("br-false-false") != std::string::npos) {
-
-    if (node->causeIteration) {
-      if (node->outOfIteration == 0)
-        tmp += "true-false-ite";
-      else 
-        tmp += "false-true-ite";
-
-      str = tmp;
-    } else {
-      for (unsigned i = 0; i < node->cfgInstSet.size(); i++) {
-        if (node->cfgInstSet[i].instSet.empty()) {
-          //std::cout << "sub path " << i 
-          //          << " empty!" << std::endl;
-          tmp += "false";
-        } else {
-          //std::cout << "sub path " << i 
-          //          << " NOT empty!" << std::endl;
-          if (!node->cfgFlowSet[i].empty()) {
-            tmp += "true";
-            set = true;
-          } else {
-            if (set) tmp += "false"; 
-            else {
-              tmp += "true";
-              set = true;
+          // set global
+          if (node->cfgInstSet[i].global) {
+            result.global = true; 
+          } else { 
+            if (res.global)
+              node->cfgInstSet[i].global = true;
+          }
+          // set shared 
+          if (node->cfgInstSet[i].shared) {
+            result.shared = true; 
+          } else { 
+            if (res.shared) {
+              node->cfgInstSet[i].shared = true;
             }
           }
         }
+      } else { 
+        CombineResult res = startDFSCheckingForCurrentBI(node->cfgNodes[i]);
+        result.explore = true;
 
-        if (i != node->cfgInstSet.size()-1)
-          tmp += "-";
+        // set global
+        if (node->cfgInstSet[i].global)
+          result.global = true;
+        else {
+          if (res.global)
+            node->cfgInstSet[i].global = true;
+        }
+        // set shared 
+        if (node->cfgInstSet[i].shared) {
+          result.shared = true;
+        } else {
+          if (res.shared) {
+            node->cfgInstSet[i].shared = true;
+          }
+        }
       }
-      str = tmp;
     }
+    // explore node's successor
+    //startDFSCheckingForCurrentBI(node->successor); 
   }
+
+  return result; 
 }
 
 static void annotateFunctionIR(LLVMContext &glContext, 
@@ -460,37 +459,25 @@ static void annotateFunctionIR(LLVMContext &glContext,
         ArrayRef<Value*> temp = ArrayRef<Value*>(CI);
         MDNode *mdNode = MDNode::get(bi->getContext(), temp);
 
-        std::string str = "br-";
+        std::string str = "br";
         for (unsigned i = 0; i < node->cfgInstSet.size(); i++) {
           if (node->cfgInstSet[i].explore) {
             //std::cout << "branch " << i << ", explore! " << std::endl;
-            str += "true";
             if (node->cfgInstSet[i].global)
               str += "-G";
-            if (node->cfgInstSet[i].shared)
+            else if (node->cfgInstSet[i].shared)
               str += "-S";
           } else {
             //std::cout << "branch " << i << ", not explore! " << std::endl;
-            str += "false";
+            str += "-E";
           }
-
-          if (i != node->cfgInstSet.size()-1)
-            str += "-";
         }
 
         if (node->causeIteration) {
           //std::cout << "causeIteration br: " << std::endl;
           //node->inst->dump();
           str += "-ite";
-          /*if (node->tainted) {
-            std::cout << "The tainted br inst: " << std::endl;
-            for (std::set<Instruction*>::iterator si = node->taintSet.begin();
-                 si != node->taintSet.end(); si++)
-              (*si)->dump();
-          }*/
         }
-
-        updateTaintNodeStr(node, str);
 
         if (Verbose > 0) {
           std::cout << "The br inst: " << std::endl;

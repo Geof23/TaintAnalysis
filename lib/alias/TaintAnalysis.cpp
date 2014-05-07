@@ -217,8 +217,6 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
           node->taintSet = taintSet; 
         }
         cfgTree->insertNodeIntoCFGTree(node);
-        std::cout << "insert node into CFGTree: " << std::endl;
-        node->inst->dump();
         transferToBasicBlock(bi->getSuccessor(0));
       } else {
         cfgTree->exploreCFGUnderIteration(inst);
@@ -1204,15 +1202,13 @@ void TaintAnalysisCUDA::encounterSyncthreadsBarrier(Instruction *inst) {
             if (fName.find("__syncthreads") != string::npos) {
               // start checking  
               CFGNode *flowCurrent = cfgTree->getFlowCurrentNode();
-              std::cout << "flow current inst: " << std::endl;
-              flowCurrent->inst->dump();
-              //cfgTree->startDFSCheckingForCurrentBI(flowCurrent);
+              cfgTree->startDFSCheckingForCurrentBI(flowCurrent);
               cfgTree->setSyncthreadEncounter();
             }
           }
         } else {
           CFGNode *flowCurrent = cfgTree->getFlowCurrentNode();
-          //cfgTree->startDFSCheckingForCurrentBI(flowCurrent);
+          cfgTree->startDFSCheckingForCurrentBI(flowCurrent);
         }
       }
     }
