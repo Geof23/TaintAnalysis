@@ -36,22 +36,12 @@ using namespace llvm;
 
 namespace taint {
 
-class RelValue {
-public:
-  Instruction *inst;
-  Value *relVal;
- 
-  explicit RelValue(Instruction *_inst, 
-                    Value *_val) : inst(_inst), 
-                                   relVal(_val) {} 
-};
-
 class RelFlowSet {
 public:
-  std::vector<RelValue> sharedReadVec;
-  std::vector<RelValue> sharedWriteVec;
-  std::vector<RelValue> globalReadVec;
-  std::vector<RelValue> globalWriteVec;
+  std::set<Value*> sharedReadVec;
+  std::set<Value*> sharedWriteVec;
+  std::set<Value*> globalReadVec;
+  std::set<Value*> globalWriteVec;
 
   explicit RelFlowSet() {}
 
@@ -122,13 +112,14 @@ public:
   explicit CFGNode(Instruction *_inst, 
                    BasicBlock *_postDom, 
                    unsigned numSuccessors, 
-                   bool _isBrCond) : inst(_inst), 
+                   bool _isBrCond, 
+                   int _BINum) : inst(_inst), 
                                      postDom(_postDom), 
-                                     isBrCond(_isBrCond) {
+                                     isBrCond(_isBrCond), 
+                                     BINum(_BINum) {
     which = 0;
     parent = NULL;
     causeIteration = false;
-    BINum = -1;
     allFinish = false;
     tainted = false;
     for (unsigned i = 0; i < numSuccessors; i++) {
@@ -306,6 +297,7 @@ public:
   VFunction* curVFunc;
   CFGTree *cfgTree;
   bool enterIteration;
+  int BINum;
 
   std::set<BasicBlock*> exploredBBSet;
   std::set<CFGNode*> exploredCFGNodes;
@@ -369,11 +361,12 @@ public:
                        AliasAnalysis &AA);
   void propagateValueInCFGTaintSet(Value* val, 
                                    Instruction *inst, 
-                                   bool sSink, 
-                                   bool shared = false);
+                                   bool sSink);
+  void propagateValueInCFGTaintSetInStore(Value* valueOp, 
+                                          Value* pointerOp,
+                                          Instruction *inst); 
   void checkGEPIIndex(Instruction *inst, 
-                      std::vector<TaintArgInfo> &argSet, 
-                      bool global);
+                      std::vector<TaintArgInfo> &argSet);
   void handleGetElementPtrInst(Instruction *inst, 
                                std::vector<TaintArgInfo> &argSet, 
                                AliasAnalysis &AA);
@@ -401,8 +394,8 @@ public:
 				    std::vector<GlobalSharedTaint> &sharedSet, 
 				    unsigned &num);
   static bool findValueFromTaintSet(Value *val, 
-			    std::set<Instruction*> &taintInstList, 
-			    std::set<Value*> &taintValueSet);
+	  		            std::set<Instruction*> &taintInstList, 
+			            std::set<Value*> &taintValueSet);
   static void insertGlobalSharedSet(Instruction *inst, 
 				    Value *pointer, 
 				    std::vector<GlobalSharedTaint> &set);

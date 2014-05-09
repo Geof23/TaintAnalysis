@@ -1,6 +1,5 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
-
 #include "TaintAnalysis.h"
 #include <iostream>
 #include <fstream>
@@ -38,14 +37,14 @@ static void extractInstFromSourceCode(MDNode *N) {
   }
 }
 
-static void dumpBrInstForTesting(CFGNode *node) {
+/*static void dumpBrInstForTesting(CFGNode *node) {
   Instruction *inst = node->inst;
   if (MDNode *N = inst->getMetadata("dbg")) {  
     // Here I is an LLVM instruction
     extractInstFromSourceCode(N);
     inst->dump();
   } 
-}
+}*/
 
 CFGTree::CFGTree() {
   root = current = flowCurrent = iterateCFGNode = NULL;
@@ -217,7 +216,7 @@ void ExecutorUtil::checkLoadInst(Instruction *inst,
         std::cout << "shared load inst: " << std::endl;
         inst->dump();
       }
-      flowSet.sharedReadVec.push_back(RelValue(inst, sharedSet[i].gv));
+      flowSet.sharedReadVec.insert(sharedSet[i].gv);
       relToShared = true;
       break;
     }
@@ -229,7 +228,7 @@ void ExecutorUtil::checkLoadInst(Instruction *inst,
                                               glSet[i].instSet, 
                                               glSet[i].valueSet)) {
         // Related to global 
-        flowSet.globalReadVec.push_back(RelValue(inst, glSet[i].gv));
+        flowSet.globalReadVec.insert(glSet[i].gv);
         if (Verbose > 0) {
           std::cout << "global load inst: " << std::endl;
           inst->dump();
@@ -258,7 +257,7 @@ void ExecutorUtil::checkStoreInst(Instruction *inst,
         std::cout << "shared store inst: " << std::endl;
         inst->dump();
       }
-      flowSet.sharedWriteVec.push_back(RelValue(inst, sharedSet[i].gv));
+      flowSet.sharedWriteVec.insert(sharedSet[i].gv);
       relToShared = true;
       break;
     }
@@ -274,7 +273,7 @@ void ExecutorUtil::checkStoreInst(Instruction *inst,
           std::cout << "global store inst: " << std::endl;
           inst->dump();
         }
-        flowSet.globalWriteVec.push_back(RelValue(inst, glSet[i].gv));
+        flowSet.globalWriteVec.insert(glSet[i].gv);
         break; 
       }
     }
@@ -298,8 +297,8 @@ void ExecutorUtil::checkAtomicInst(Instruction *inst,
         std::cout << "shared store inst: " << std::endl;
         inst->dump();
       }
-      flowSet.sharedReadVec.push_back(RelValue(inst, sharedSet[i].gv));
-      flowSet.sharedWriteVec.push_back(RelValue(inst, sharedSet[i].gv));
+      flowSet.sharedReadVec.insert(sharedSet[i].gv);
+      flowSet.sharedWriteVec.insert(sharedSet[i].gv);
       relToShared = true;
       break;
     }
@@ -315,8 +314,8 @@ void ExecutorUtil::checkAtomicInst(Instruction *inst,
           std::cout << "global store inst: " << std::endl;
           inst->dump();
         }
-        flowSet.globalReadVec.push_back(RelValue(inst, glSet[i].gv));
-        flowSet.globalWriteVec.push_back(RelValue(inst, glSet[i].gv));
+        flowSet.globalReadVec.insert(glSet[i].gv);
+        flowSet.globalWriteVec.insert(glSet[i].gv);
         break; 
       }
     }
@@ -340,7 +339,8 @@ void CFGTree::insertCurInst(Instruction *inst,
     for (std::set<Instruction*>::iterator si = cfgInstSet.instSet.begin();
          si != cfgInstSet.instSet.end(); si++) {
       (*si)->dump();
-    }*/
+    }
+    */
 
     // To determine if the pointer operand in the 'Load' instruction
     // conflicts with shared/global variable 
@@ -445,66 +445,6 @@ CombineResult CFGTree::startDFSCheckingForCurrentBI(CFGNode *node) {
   }
 
   return result; 
-}
-
-static void annotateFunctionIR(LLVMContext &glContext, 
-                               Function *f, 
-                               CFGNode *node) {
-  bool instFound = false;
-
-  for (Function::iterator fi = f->begin(); fi != f->end(); fi++) {
-    for (BasicBlock::iterator bi = fi->begin(); bi != fi->end(); bi++) {
-      if (isTwoInstIdentical(bi, node->inst)) {
-        Value *CI = MDString::get(glContext, "brprop");
-        ArrayRef<Value*> temp = ArrayRef<Value*>(CI);
-        MDNode *mdNode = MDNode::get(bi->getContext(), temp);
-
-        std::string str = "br";
-        for (unsigned i = 0; i < node->cfgInstSet.size(); i++) {
-          if (node->cfgInstSet[i].explore) {
-            //std::cout << "branch " << i << ", explore! " << std::endl;
-            if (node->cfgInstSet[i].global)
-              str += "-G";
-            else if (node->cfgInstSet[i].shared)
-              str += "-S";
-          } else {
-            //std::cout << "branch " << i << ", not explore! " << std::endl;
-            str += "-E";
-          }
-        }
-
-        if (node->causeIteration) {
-          //std::cout << "causeIteration br: " << std::endl;
-          //node->inst->dump();
-          str += "-ite";
-        }
-
-        if (Verbose > 0) {
-          std::cout << "The br inst: " << std::endl;
-          node->inst->dump();
-          std::cout << "Metadata: " << str << std::endl;
-        }
-        bi->setMetadata(str, mdNode);
-        instFound = true;
-        break;
-      }
-    }
-    if (instFound) break;
-  }
-}
-
-void CFGTree::exploreCFGTreeToAnnotate(LLVMContext &glContext, 
-                                       Function *f, 
-                                       CFGNode *node) {
-  if (node) {
-    //std::cout << "node inst: " << node->causeIteration << std::endl;
-    //node->inst->dump();
-    annotateFunctionIR(glContext, f, node);
-    for (unsigned i = 0; i < node->cfgNodes.size(); i++) {
-      exploreCFGTreeToAnnotate(glContext, f, node->cfgNodes[i]);
-    }
-    exploreCFGTreeToAnnotate(glContext, f, node->successor);
-  }
 }
 
 void CFGTree::setSyncthreadEncounter() {
