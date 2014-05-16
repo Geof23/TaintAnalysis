@@ -44,7 +44,7 @@ static void annotateFunctionIR(LLVMContext &glContext,
             else if (node->cfgInstSet[i].shared)
               str += "-S";
           } else {
-            str += "-E";
+            str += "-S";
           }
         }
 

@@ -176,8 +176,10 @@ void TaintAnalysisCUDA::handleBrInst(Instruction *inst,
   BranchInst *bi = dyn_cast<BranchInst>(inst);
   if (bi->isUnconditional()) {
     transferToBasicBlock(bi->getSuccessor(0));
-  } else {
+  } else { 
     Value *cond = bi->getCondition();
+    propagateValueInCFGTaintSet(cond, inst, true);
+
     bool brTainted = false;
     set<Instruction*> taintSet;
 
