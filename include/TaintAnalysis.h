@@ -359,6 +359,9 @@ public:
   void handleStoreInst(Instruction *inst, 
                        std::vector<TaintArgInfo> &argSet, 
                        AliasAnalysis &AA);
+  void dumpCFGInstSet(Instruction *inst, 
+                      CFGInstSet &cfgInstSet,
+                      RelFlowSet &flowSet); 
   void propagateValueInCFGTaintSet(Value* val, 
                                    Instruction *inst, 
                                    bool sSink);

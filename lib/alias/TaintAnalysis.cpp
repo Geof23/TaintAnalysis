@@ -798,9 +798,9 @@ void TaintAnalysisCUDA::handleStoreInst(Instruction *inst,
   }
 }
 
-static void dumpCFGInstSet(Instruction *inst, 
-                           CFGInstSet &cfgInstSet,
-                           RelFlowSet &flowSet) {
+void TaintAnalysisCUDA::dumpCFGInstSet(Instruction *inst, 
+                                       CFGInstSet &cfgInstSet,
+                                       RelFlowSet &flowSet) {
   std::cout << "[CFG Inst] : " << std::endl;
   inst->dump();
   int i = 0;

@@ -5,25 +5,26 @@ INSTALLATION:
 This document is created based on the link: http://llvm.org/docs/Projects.html, 
 if you have further questions, please refer to it for more information.
 
-1. Place the alias directory under 'llvm/projects' 
+1. Place the TaintAnalysis directory under 'llvm/projects' 
 
-2. Go into 'alias' directory, and run './configure --with-llvmsrc=<directory> --with-llvmobj=<directory> --prefix=<directory>'
-command to configure the alias project 
+2. Go into 'TaintAnalysis' directory, and run './configure --with-llvmsrc=<directory>'
+command to configure
 
 3. Run 'make' to build a shared library, and the shared library resides in the same directory as the source code
 
 
-This project contains four llvm passes, which performs a combination of use-def chain analysis and alias analysis 
-to perform taint analysis on cuda kernel.
+RUN:
 
-1. TaintAnalysis pass
+The taint analyser consists of three llvm passes, which performs a combination of use-def chain analysis 
+and alias analysis to perform taint analysis on CUDA kernels.
 
-This pass uses the alias analysis pass and does a use def chain traversal to identify tainted variables. The source of the tainted variables 
-are the inputs to the kernels and cuda thread configuration variables.
+To run the analyser:
 
-To run this pass:
+sesa < [input_llvm_bytecode] > [output_llvm_bytecode]
 
-opt -load /To/llvm/path/projects/alias/Debug+Asserts/lib/libashwin_taint.so -scev-aa -taint < inputfile.o >& /dev/null
+1. The taint analyser outputs informative messages on which variables shall be symbolized 
+in a file named "summary.txt"
 
-This pass outputs to the console all the program variables are tainted by input parameters and thread configuration 
-for each kernel as they appear in the code.
+2. The taint analyser annotates the input llvm bytecode with LLVM metadata and generates the 
+new llvm bytecode containing LLVM annotations that are used to prune redundant flows in the 
+symbolic execution stage.

@@ -11,7 +11,7 @@ namespace runtime {
 using namespace taint;
 using namespace runtime;
 
-static void extractInstFromSourceCode(MDNode *N) {
+/*static void extractInstFromSourceCode(MDNode *N) {
   DILocation Loc(N);               // DILocation is in DebugInfo.h
   unsigned Line = Loc.getLineNumber();
   StringRef File = Loc.getFilename();
@@ -37,7 +37,7 @@ static void extractInstFromSourceCode(MDNode *N) {
   }
 }
 
-/*static void dumpBrInstForTesting(CFGNode *node) {
+static void dumpBrInstForTesting(CFGNode *node) {
   Instruction *inst = node->inst;
   if (MDNode *N = inst->getMetadata("dbg")) {  
     // Here I is an LLVM instruction
