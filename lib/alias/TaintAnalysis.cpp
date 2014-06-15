@@ -315,6 +315,8 @@ void TaintAnalysisCUDA::handlePHINode(Instruction *inst,
     propagateValueInCFGTaintSet(val, inst, false);  
   }
 
+  // check if inputs propagate to intermediate 
+  // variables   
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     for (unsigned j = 0; j < pi->getNumIncomingValues(); j++) {
       Value *val = pi->getIncomingValue(j);
@@ -323,6 +325,36 @@ void TaintAnalysisCUDA::handlePHINode(Instruction *inst,
                                               taintArgSet[i].taintInstList, 
                                               taintArgSet[i].taintValueSet)) {
         taintArgSet[i].taintInstList.insert(inst);
+        break;
+      } 
+    }
+  }
+
+  // check if global variables propagate to intermediate
+  // variables 
+  for (unsigned i = 0; i < glSet.size(); i++) {
+    for (unsigned j = 0; j < pi->getNumIncomingValues(); j++) {
+      Value *val = pi->getIncomingValue(j);
+
+      if (ExecutorUtil::findValueFromTaintSet(val, 
+                                              glSet[i].instSet, 
+                                              glSet[i].valueSet)) {
+        glSet[i].instSet.insert(inst);
+        break;
+      } 
+    }
+  }
+
+  // check if shared variables propagate to intermediate
+  // variables 
+  for (unsigned i = 0; i < sharedSet.size(); i++) {
+    for (unsigned j = 0; j < pi->getNumIncomingValues(); j++) {
+      Value *val = pi->getIncomingValue(j);
+
+      if (ExecutorUtil::findValueFromTaintSet(val, 
+                                              sharedSet[i].instSet, 
+                                              sharedSet[i].valueSet)) {
+        sharedSet[i].instSet.insert(inst);
         break;
       } 
     }
@@ -336,6 +368,7 @@ void TaintAnalysisCUDA::handleSelectInst(Instruction *inst,
 
   propagateValueInCFGTaintSet(cond, inst, false);
 
+  // check if inputs propagate to intermediate variables
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(cond, 
                                             taintArgSet[i].taintInstList, 
@@ -362,6 +395,30 @@ void TaintAnalysisCUDA::handleSelectInst(Instruction *inst,
                                                 taintArgSet[i].taintInstList,
                                                 taintArgSet[i].taintValueSet)) {
       taintArgSet[i].taintInstList.insert(inst);   
+    }
+  }
+
+  // check if global variables propagate to intermediate variables
+  for (unsigned i = 0; i < glSet.size(); i++) {
+    if (ExecutorUtil::findValueFromTaintSet(si->getTrueValue(), 
+                                            glSet[i].instSet, 
+                                            glSet[i].valueSet) 
+         || ExecutorUtil::findValueFromTaintSet(si->getFalseValue(),
+                                                glSet[i].instSet,
+                                                glSet[i].valueSet)) {
+      glSet[i].instSet.insert(inst);
+    }
+  }
+
+  // check if shared variables propagate to intermediate variables
+  for (unsigned i = 0; i < sharedSet.size(); i++) {
+    if (ExecutorUtil::findValueFromTaintSet(si->getTrueValue(), 
+                                            sharedSet[i].instSet, 
+                                            sharedSet[i].valueSet) 
+         || ExecutorUtil::findValueFromTaintSet(si->getFalseValue(),
+                                                sharedSet[i].instSet,
+                                                sharedSet[i].valueSet)) {
+      sharedSet[i].instSet.insert(inst);
     }
   }
 }
@@ -472,8 +529,7 @@ void TaintAnalysisCUDA::executeCUDAArithOrConvIntrinsic(Instruction *inst,
     propagateValueInCFGTaintSet(arg, inst, false); 
   }
 
-  // check the argument's use point
-  // to see if it flows to result value on the LHS
+  // check if inputs propagate to result value on the LHS
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     for (unsigned j = 0; j < inst->getNumOperands(); j++) {
       Value *arg = inst->getOperand(j);
@@ -481,6 +537,32 @@ void TaintAnalysisCUDA::executeCUDAArithOrConvIntrinsic(Instruction *inst,
                                               taintArgSet[i].taintInstList, 
                                               taintArgSet[i].taintValueSet)) {
         taintArgSet[i].taintInstList.insert(inst);
+        break;
+      } 
+    }
+  }
+
+  // check if global variables propagate to result value on the LHS
+  for (unsigned i = 0; i < glSet.size(); i++) {
+    for (unsigned j = 0; j < inst->getNumOperands(); j++) {
+      Value *arg = inst->getOperand(j);
+      if (ExecutorUtil::findValueFromTaintSet(arg, 
+                                              glSet[i].instSet, 
+                                              glSet[i].valueSet)) {
+        glSet[i].instSet.insert(inst);
+        break;
+      } 
+    }
+  }
+
+  // check if shared variables propagate to result value on the LHS
+  for (unsigned i = 0; i < sharedSet.size(); i++) {
+    for (unsigned j = 0; j < inst->getNumOperands(); j++) {
+      Value *arg = inst->getOperand(j);
+      if (ExecutorUtil::findValueFromTaintSet(arg, 
+                                              sharedSet[i].instSet, 
+                                              sharedSet[i].valueSet)) {
+        sharedSet[i].instSet.insert(inst);
         break;
       } 
     }
@@ -552,8 +634,7 @@ void TaintAnalysisCUDA::handleArithmeticInst(Instruction *inst,
   propagateValueInCFGTaintSet(left, inst, false);
   propagateValueInCFGTaintSet(right, inst, false);
 
-  // check the argument's use point
-  // to see if it flows to result value on the LHS
+  // check if inputs propagate to result value on the LHS
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(left, 
                                             taintArgSet[i].taintInstList, 
@@ -564,8 +645,7 @@ void TaintAnalysisCUDA::handleArithmeticInst(Instruction *inst,
       taintArgSet[i].taintInstList.insert(inst);
   }
 
-  // check the global variable's use point
-  // to see if they flow to result value on the LHS
+  // check if global variables propagate to result value on the LHS
   for (unsigned i = 0; i < glSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(left, 
                                             glSet[i].instSet, 
@@ -577,8 +657,7 @@ void TaintAnalysisCUDA::handleArithmeticInst(Instruction *inst,
     }
   }
 
-  // check the shared variable's use point
-  // to see if they flow to result value on the LHS
+  // check if shared variables propagate to result value on the LHS
   for (unsigned i = 0; i < sharedSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(left, 
                                             sharedSet[i].instSet, 
@@ -599,8 +678,7 @@ void TaintAnalysisCUDA::handleCmpInst(Instruction *inst,
   propagateValueInCFGTaintSet(left, inst, false);
   propagateValueInCFGTaintSet(right, inst, false);
 
-  // check the argument's use point
-  // to see if it flows to result value on the LHS
+  // check if inputs propagate to result value on the LHS
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     if (ExecutorUtil::findValueFromTaintSet(left, 
                                             taintArgSet[i].taintInstList, 
@@ -609,6 +687,30 @@ void TaintAnalysisCUDA::handleCmpInst(Instruction *inst,
                                                 taintArgSet[i].taintInstList, 
                                                 taintArgSet[i].taintValueSet))
     taintArgSet[i].taintInstList.insert(inst);
+  }
+
+  // check if global variables propagate to result value on the LHS
+  for (unsigned i = 0; i < glSet.size(); i++) {
+    if (ExecutorUtil::findValueFromTaintSet(left, 
+                                            glSet[i].instSet, 
+                                            glSet[i].valueSet)
+         || ExecutorUtil::findValueFromTaintSet(right,   
+                                                glSet[i].instSet,    
+                                                glSet[i].valueSet)) {
+      glSet[i].instSet.insert(inst);
+    }
+  }
+
+  // check if shared variables propagate to result value on the LHS
+  for (unsigned i = 0; i < sharedSet.size(); i++) {
+    if (ExecutorUtil::findValueFromTaintSet(left, 
+                                            sharedSet[i].instSet, 
+                                            sharedSet[i].valueSet)
+         || ExecutorUtil::findValueFromTaintSet(right,   
+                                                sharedSet[i].instSet,    
+                                                sharedSet[i].valueSet)) {
+      sharedSet[i].instSet.insert(inst);
+    }
   }
 }
 
@@ -838,7 +940,6 @@ void TaintAnalysisCUDA::propagateValueInCFGTaintSet(Value *val,
     vector<CFGInstSet> &cfgInstSet = (*si)->cfgInstSet;
     vector<RelFlowSet> &cfgFlowSet = (*si)->cfgFlowSet;
     for (unsigned i = 0; i < cfgInstSet.size(); i++) {
-      //if (sSink) dumpCFGInstSet((*si)->inst, cfgInstSet[i], cfgFlowSet[i]);
       bool propagate = false;
       if (Instruction *in = dyn_cast<Instruction>(val))
         propagate = cfgInstSet[i].instSet.find(in) != cfgInstSet[i].instSet.end();
@@ -847,8 +948,8 @@ void TaintAnalysisCUDA::propagateValueInCFGTaintSet(Value *val,
                      || cfgFlowSet[i].sharedWriteVec.find(val) != cfgFlowSet[i].sharedWriteVec.end()
                        || cfgFlowSet[i].globalWriteVec.find(val) != cfgFlowSet[i].globalWriteVec.end());
 
-      if (propagate) {        
-        // inst is inserted into the instSet of this branch,
+      if (propagate) {
+        // inst is inserted into the instSet of this branch
         cfgInstSet[i].instSet.insert(inst);
         cfgInstSet[i].propSet.insert(val);
         if (sSink) {
@@ -897,7 +998,8 @@ void TaintAnalysisCUDA::propagateValueInCFGTaintSetInStore(Value *valueOp,
 }
 
 void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst, 
-                                       vector<TaintArgInfo> &taintArgSet) {
+                                       vector<TaintArgInfo> &taintArgSet, 
+                                       vector<GlobalSharedTaint> &sharedSet) {
   GetElementPtrInst *gepi = dyn_cast<GetElementPtrInst>(inst);
 
   // To test other arguments are tainted or not  
@@ -921,13 +1023,31 @@ void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst,
         }
         taintArgSet[i].taint = true;
       }
+
+      // check if element is data-dependent on shared variables  
+      std::cout << "execute here" << std::endl;
+      if (ExecutorUtil::findValueFromTaintSet(element, 
+                                              sharedSet[i].instSet, 
+                                              sharedSet[i].valueSet)) {
+        if (Verbose > 0) {
+          TAINT_INFO2 << "The index is tainted, the index: " << endl;
+          element->dump(); 
+        } else {
+          ofstream file("summary.txt", ios::app);
+          if (file.is_open()) {
+            file << "The index is data-dependent on shared variables: "
+                 << sharedSet[i].gv->getName().str() << "\n";
+          }
+          file.close();
+        }
+      }
     }
 
     propagateValueInCFGTaintSet(element, inst, true);
   }
 }
 
-void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst, 
+void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst,
                                                 vector<TaintArgInfo> &taintArgSet,
                                                 AliasAnalysis &AA) {
   GetElementPtrInst *gepi = dyn_cast<GetElementPtrInst>(inst); 
@@ -973,7 +1093,7 @@ void TaintAnalysisCUDA::handleGetElementPtrInst(Instruction *inst,
   }
 
   if (device_alias || shared_alias) {
-    checkGEPIIndex(inst, taintArgSet);
+    checkGEPIIndex(inst, taintArgSet, sharedSet);
   }
 }
 

@@ -369,7 +369,8 @@ public:
                                           Value* pointerOp,
                                           Instruction *inst); 
   void checkGEPIIndex(Instruction *inst, 
-                      std::vector<TaintArgInfo> &argSet);
+                      std::vector<TaintArgInfo> &argSet, 
+                      std::vector<GlobalSharedTaint> &sharedSet);
   void handleGetElementPtrInst(Instruction *inst, 
                                std::vector<TaintArgInfo> &argSet, 
                                AliasAnalysis &AA);
