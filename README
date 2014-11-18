@@ -10,21 +10,22 @@ if you have further questions, please refer to it for more information.
 2. Go into 'TaintAnalysis' directory, and run './configure --with-llvmsrc=<directory>'
 command to configure
 
-3. Run 'make' to build a shared library, and the shared library resides in the same directory as the source code
+3. Run 'make' to build a shared library, and the shared library 
+resides in the same directory as the source code
 
 
 RUN:
 
-The taint analyser consists of three llvm passes, which performs a combination of use-def chain analysis 
-and alias analysis to perform taint analysis on CUDA kernels.
+The taint analyser consists of three llvm passes, which performs a combination of 
+use-def chain analysis and alias analysis to perform taint analysis on CUDA kernels.
 
 To run the analyser:
 
 sesa < [input_llvm_bytecode] > [output_llvm_bytecode]
 
-1. The taint analyser outputs informative messages on which variables shall be symbolized 
-in a file named "summary.txt"
+1. The taint analyser outputs informative messages on which variables shall 
+be symbolized in a file named "summary.txt"
 
-2. The taint analyser annotates the input llvm bytecode with LLVM metadata and generates the 
-new llvm bytecode containing LLVM annotations that are used to prune redundant flows in the 
-symbolic execution stage.
+2. The taint analyser annotates the input llvm bytecode with LLVM metadata 
+and generates the new llvm bytecode containing LLVM annotations that are used 
+to prune redundant flows in the symbolic execution stage.
