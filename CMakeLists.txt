@@ -1,0 +1,1 @@
+add_directories( lib )
