@@ -5,6 +5,8 @@ INCLUDE_DIRECTORIES( ../../include ../../../../../../src/LLVM/include ../../../.
 add_library( ashwin_taint_a STATIC ${SOURCES} )
 add_library( ashwin_taint_so SHARED ${SOURCES} )
 
+install( FILES )
+
 set_target_properties( ashwin_taint_a
   PROPERTIES
   OUTPUT_NAME
