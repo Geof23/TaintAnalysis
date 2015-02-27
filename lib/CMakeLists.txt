@@ -1,1 +1,1 @@
-add_directories( alias )
+add_subdirectory( alias )
