@@ -1,6 +1,6 @@
 file( GLOB SOURCES *.cpp )
 
-INCLUDE_DIRECTORIES( . )
+INCLUDE_DIRECTORIES( ../../include )
 
 add_library( ashwin_taint_a STATIC ${SOURCES} )
 add_library( ashwin_taint_so SHARED ${SOURCES} )
