@@ -1,14 +1,14 @@
-#include "llvm/CallingConv.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Module.h"
-#include "llvm/Type.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/InlineCost.h"
-#include "llvm/Support/CallSite.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/InlinerPass.h"
-#include "llvm/DataLayout.h"
+#include "llvm/IR/DataLayout.h"
 
 #include <iostream>
 
@@ -17,7 +17,7 @@ using namespace llvm;
 namespace taint {
 
 class TaintInliner : public Inliner {
-  InlineCostAnalyzer CA;
+  //InlineCostAnalyzer CA;
 public:
   TaintInliner() : Inliner(ID) {
     initializeSimpleInlinerPass(*PassRegistry::getPassRegistry());
@@ -37,12 +37,13 @@ public:
     if (Callee->isDeclaration()) 
       return InlineCost::getNever();
 
-    if (Callee->getFnAttributes().hasAttribute(Attributes::NoInline))
+    if (Callee->hasFnAttribute(Attribute::AttrKind::NoInline))
       return InlineCost::getNever();
 
     // Otherwise, force inlining.
     return InlineCost::getAlways();
   }
+  using Pass::doInitialization;
   virtual bool doInitialization(CallGraph &CG);
 };
 

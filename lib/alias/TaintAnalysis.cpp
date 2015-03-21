@@ -147,7 +147,7 @@ static Function* getTargetFunction(Value *calledVal) {
 
   while (true) {
     if (GlobalValue *gv = dyn_cast<GlobalValue>(c)) {
-      if (!Visited.insert(gv))
+      if (!Visited.insert(gv).second)
         return 0;
 
       if (Function *f = dyn_cast<Function>(gv))

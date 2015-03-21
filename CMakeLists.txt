@@ -16,6 +16,7 @@ macro(add_cxx_flag_if_supported flagname)
   endif()
 endmacro()
 
+add_cxx_flag_if_supported("-std=c++11")
 add_cxx_flag_if_supported("-Wall")
 #add_cxx_flag_if_supported("-Wextra")
 add_cxx_flag_if_supported("-pedantic")

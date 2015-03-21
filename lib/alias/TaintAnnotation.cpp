@@ -32,9 +32,10 @@ static void annotateFunctionIR(LLVMContext &glContext,
   for (Function::iterator fi = f->begin(); fi != f->end(); fi++) {
     for (BasicBlock::iterator bi = fi->begin(); bi != fi->end(); bi++) {
       if (isTwoInstIdentical(bi, node->inst)) {
-        Value *CI = MDString::get(glContext, "brprop");
-        ArrayRef<Value*> temp = ArrayRef<Value*>(CI);
-        MDNode *mdNode = MDNode::get(bi->getContext(), temp);
+        // Value *CI = MDString::get(glContext, "brprop");
+        // ArrayRef<Value*> temp = ArrayRef<Value*>(CI);
+        MDNode *mdNode = MDNode::get(bi->getContext(), MDString::get(glContext, "brprop"));
+	// MDNode *mdNode = MDNode::get(bi->getContext(), temp);
 
         std::string str = "br";
         for (unsigned i = 0; i < node->cfgInstSet.size(); i++) {
