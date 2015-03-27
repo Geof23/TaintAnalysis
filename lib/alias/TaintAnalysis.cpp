@@ -1025,7 +1025,10 @@ void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst,
       }
 
       // check if element is data-dependent on shared variables  
-      std::cout << "execute here" << std::endl;
+      //by Geof -- why was this here?  It's corrupting the output!
+      //      std::cout << "execute here" << std::endl;
+
+
       if (ExecutorUtil::findValueFromTaintSet(element, 
                                               sharedSet[i].instSet, 
                                               sharedSet[i].valueSet)) {
