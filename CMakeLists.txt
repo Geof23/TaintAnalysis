@@ -1,8 +1,26 @@
 project( TaintAnalysis )
-cmake_minimum_required(VERSION 2.8.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 
 set ( TA_VERSION_MAJOR 0)
 set ( TA_VERSION_MINOR 1)
+
+# -----------------------------------------------------------------------------
+# Make RelWithDebInfo the default build type if otherwise not set
+# -----------------------------------------------------------------------------
+set(build_types Debug Release RelWithDebInfo MinSizeRel)
+if(NOT CMAKE_BUILD_TYPE)
+
+      message(STATUS "You can choose the type of build, options are:${build_types}")
+      set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE String
+          "Options are ${build_types}"
+          FORCE
+         )
+
+      # Provide drop down menu options in cmake-gui
+      set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${build_types})
+endif()
+message(STATUS "Doing a ${CMAKE_BUILD_TYPE} build")
+
 
 include(CheckCXXCompilerFlag)
 
@@ -15,6 +33,15 @@ macro(add_cxx_flag_if_supported flagname)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flagname}")
   endif()
 endmacro()
+
+if( CMAKE_BUILD_TYPE MATCHES "[a-zA-Z0-9]+Deb[a-zA-Z0-9]+" )
+  add_cxx_flag_if_supported( "-g" )
+endif()
+if( CMAKE_BUILD_TYPE MATCHES "[a-zA-Z0-9]+Rel[a-zA-Z0-9]+" )
+  add_cxx_flag_if_supported( "-O2" )
+else()
+  add_cxx_flag_if_supported( "-O0" )
+endif()
 
 add_cxx_flag_if_supported("-Wall")
 #add_cxx_flag_if_supported("-Wextra")
