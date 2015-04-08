@@ -717,6 +717,7 @@ void TaintAnalysisCUDA::handleCmpInst(Instruction *inst,
 bool ExecutorUtil::findValueFromTaintSet(Value *val, 
                                          set<Instruction*> &taintInstList, 
                                          set<Value*> &taintValueSet) {
+  assert(val);
   if (Instruction *si = dyn_cast<Instruction>(val)) {
     if (taintInstList.find(si) != taintInstList.end()) {
       return true;
@@ -725,6 +726,7 @@ bool ExecutorUtil::findValueFromTaintSet(Value *val,
     if (taintValueSet.find(val) != taintValueSet.end()) {
       return true;
     } else {
+      assert(val->stripPointerCasts());
       if (taintValueSet.find(val->stripPointerCasts()) 
                                != taintValueSet.end()) {
         return true;
@@ -1029,7 +1031,7 @@ void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst,
       //      std::cout << "execute here" << std::endl;
 
 
-      if (ExecutorUtil::findValueFromTaintSet(element, 
+      if (sharedSet.size() > i && ExecutorUtil::findValueFromTaintSet(element, 
                                               sharedSet[i].instSet, 
                                               sharedSet[i].valueSet)) {
         if (Verbose > 0) {
