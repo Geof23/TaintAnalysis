@@ -25,6 +25,7 @@ char TaintAnalysisCUDA::ID = 0;
 
 RegisterPass<TaintAnalysisCUDA> Y("taint", "Taint analysis pass");
 
+//strip leading and trailing spaces
 static string strip(string &in) {
   unsigned len = in.size();
   unsigned lead = 0, trail = len;
@@ -100,6 +101,7 @@ void VFunction::dumpVFunctionInst() {
   }
 }
 
+//virtual of FunctionPass, parent of TaintAnalysisCUDA
 bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
   const char* c_file = "kernelSet.txt";
   ifstream f(c_file);
@@ -1030,21 +1032,27 @@ void TaintAnalysisCUDA::checkGEPIIndex(Instruction *inst,
       //by Geof -- why was this here?  It's corrupting the output!
       //      std::cout << "execute here" << std::endl;
 
-
-      if (sharedSet.size() > i && ExecutorUtil::findValueFromTaintSet(element, 
-                                              sharedSet[i].instSet, 
-                                              sharedSet[i].valueSet)) {
-        if (Verbose > 0) {
-          TAINT_INFO2 << "The index is tainted, the index: " << endl;
-          element->dump(); 
-        } else {
-          ofstream file("summary.txt", ios::app);
-          if (file.is_open()) {
-            file << "The index is data-dependent on shared variables: "
-                 << sharedSet[i].gv->getName().str() << "\n";
-          }
-          file.close();
-        }
+      //TODO this is still faulty -- this is the kernel global shared set, and should not
+      //indexed from the kernel argument index (it is assigned by its order in the EXE
+      // if (sharedSet.size() > i && ExecutorUtil::findValueFromTaintSet(element, 
+      //                                         sharedSet[i].instSet, 
+      //                                         sharedSet[i].valueSet)) {
+      for( unsigned s = 0; s < sharedSet.size(); ++s ){
+	if ( ExecutorUtil::findValueFromTaintSet(element, 
+						 sharedSet[ s ].instSet, 
+						 sharedSet[ s ].valueSet)) {
+	  if (Verbose > 0) {
+	    TAINT_INFO2 << "The index is tainted, the index: " << endl;
+	    element->dump(); 
+	  } else {
+	    ofstream file("summary.txt", ios::app);
+	    if (file.is_open()) {
+	      file << "The index is data-dependent on shared variables: "
+		   << sharedSet[ s ].gv->getName().str() << "\n";
+	    }
+	    file.close();
+	  }
+	}
       }
     }
 
@@ -1317,6 +1325,7 @@ void TaintAnalysisCUDA::dumpTaintArgInfo(TaintArgInfo &argInfo) {
 
 static bool existTaintInArgTaintSet(vector<TaintArgInfo> &taintArgSet, 
                                     unsigned &num) {
+  //TODO can return upon first taint == true
   bool taint = false;
   for (unsigned i = 0; i < taintArgSet.size(); i++) {
     if (taintArgSet[i].taint) {
@@ -1437,6 +1446,8 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
   for (Function::arg_iterator ai = f->arg_begin();
        ai != f->arg_end(); ++ai, ++totalArgNum) {
     Value *arg = dyn_cast<Value>(ai);
+    //TODO why do we only check pointer types?  Can't non-pointer types
+    //be of interest?
     if (arg->getType()->isPointerTy()) {
       // Only take into account of pointer-type variables
       if (Verbose > 0) {
