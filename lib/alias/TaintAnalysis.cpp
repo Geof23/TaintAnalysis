@@ -1254,9 +1254,12 @@ bool TaintAnalysisCUDA::executeInstruction(llvm::Instruction *inst,
       break; 
     }
     default: {
-      cout << "unsupported inst encountered!" << endl;
-      cout << "inst opcode: " << inst->getOpcodeName() << endl;
-      inst->dump();
+      //TODO Commented by Geof -- ran into extractvalue, which is taking a value from
+      //a structure passed by value.  It appears that TaintAnalaysis doesn't
+      //track flows through function calls
+      // cout << "unsupported inst encountered!" << endl;
+      // cout << "inst opcode: " << inst->getOpcodeName() << endl;
+      // inst->dump();
       break;
     }
   }
