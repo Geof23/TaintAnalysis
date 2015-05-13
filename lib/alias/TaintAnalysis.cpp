@@ -103,7 +103,6 @@ void VFunction::dumpVFunctionInst() {
 
 //virtual of FunctionPass, parent of TaintAnalysisCUDA
 bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
-  const char* c_file = "kernelSet.txt";
 	DIR* dir = opendir( "." );
 	while( dir ){
 		struct dirent* di = readdir( dir );
