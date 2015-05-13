@@ -1,7 +1,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "TaintAnalysis.h"
 #include <fstream> 
-
+#include <dirent.h>
 /*
 This pass uses a combination of use def chain analysis with 
 Alias analysis to perform taint tracking in cuda kernels. 
@@ -104,17 +104,33 @@ void VFunction::dumpVFunctionInst() {
 //virtual of FunctionPass, parent of TaintAnalysisCUDA
 bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
   const char* c_file = "kernelSet.txt";
-  ifstream f(c_file);
-  assert(f.is_open() && "unable to open kernelSet.txt file");
+	while( true ){
+		struct dirent* di = readdir(".");
+		if(!di) break;
+		std::string dname(di->d_name);
+		if( dname.find("kernelSet.txt") != std::string::npos ){
+			std::ifstream f(dname);                                                          
+			assert(f.is_open() && "unable to open " + dname + " file");                      
+			while (!f.eof()) {
+				std::string line;
+				std::getline(f, line);
+				line = strip(line);                                                           
+				if (!line.empty())
+					kernelSet.insert(make_pair(line, false));                                         
+			} 
+			f.close();
+		}
+  // ifstream f(c_file);
+  // assert(f.is_open() && "unable to open kernelSet.txt file");
 
-  while (!f.eof()) {
-    string line;
-    getline(f, line);
-    line = strip(line);
-    if (!line.empty())
-      kernelSet.insert(make_pair(line, false));
-  }
-  f.close();
+  // while (!f.eof()) {
+  //   string line;
+  //   getline(f, line);
+  //   line = strip(line);
+  //   if (!line.empty())
+  //     kernelSet.insert(make_pair(line, false));
+  // }
+  // f.close();
   curVFunc = NULL;
   BINum = 0;
 
