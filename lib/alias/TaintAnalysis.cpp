@@ -104,13 +104,14 @@ void VFunction::dumpVFunctionInst() {
 //virtual of FunctionPass, parent of TaintAnalysisCUDA
 bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
   const char* c_file = "kernelSet.txt";
-	while( true ){
-		struct dirent* di = readdir(".");
+	DIR* dir = opendir( "." );
+	while( dir ){
+		struct dirent* di = readdir( dir );
 		if(!di) break;
 		std::string dname(di->d_name);
 		if( dname.find("kernelSet.txt") != std::string::npos ){
-			std::ifstream f(dname);                                                          
-			assert(f.is_open() && "unable to open " + dname + " file");                      
+			std::ifstream f( dname.c_str() );                                                          
+			assert(f.is_open() && string( "unable to open " + dname + " file" ).c_str());                      
 			while (!f.eof()) {
 				std::string line;
 				std::getline(f, line);
@@ -120,6 +121,7 @@ bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
 			} 
 			f.close();
 		}
+	}
   // ifstream f(c_file);
   // assert(f.is_open() && "unable to open kernelSet.txt file");
 
@@ -154,7 +156,7 @@ bool TaintAnalysisCUDA::doInitialization(llvm::Module &M) {
   }
 
   return false;
-}
+	}
 
 static Function* getTargetFunction(Value *calledVal) {
   SmallPtrSet<const GlobalValue*, 3> Visited;
