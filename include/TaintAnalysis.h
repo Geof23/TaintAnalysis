@@ -30,7 +30,7 @@
 #include <map>
 #include "TaintInliner.h"
 
-#define TAINT_INFO2 std::cout << "[TAINT]: "
+#define TAINT_INFO2 std::cerr << "[TAINT]: "
 
 using namespace llvm;
 

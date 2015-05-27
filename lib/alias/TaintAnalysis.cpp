@@ -1620,6 +1620,8 @@ bool TaintAnalysisCUDA::exploreCUDAKernel(Function *f,
 }
 
 bool TaintAnalysisCUDA::runOnFunction(llvm::Function &F) {
+
+  TAINT_INFO2 << "testing TAINT_INFO2 in runOnFunction" << std::endl;
   AliasAnalysis &AA = getAnalysis<AliasAnalysis>();
 
   string fName = F.getName().str();
