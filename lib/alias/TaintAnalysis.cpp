@@ -1165,6 +1165,9 @@ void TaintAnalysisCUDA::handleConversionInst(Instruction *inst,
 bool TaintAnalysisCUDA::executeInstruction(llvm::Instruction *inst,
                                            vector<TaintArgInfo> &taintArgSet,
                                            AliasAnalysis &AA) {
+  if( Verbose > 10 ){
+    inst->dump();
+  }
   bool blockChange = false;
 
   switch (inst->getOpcode()) {
